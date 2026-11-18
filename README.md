@@ -1,0 +1,148 @@
+# dchan
+
+A vichan fork used as a starting point for new imageboards. It is stock vichan plus a
+staff-moderation toolkit, anti-abuse defences and a Docker stack. All site-specific
+branding is stripped: the placeholders are `example.com`, the `imgboard` name/prefix
+(functions, tables, JS, templates) and a `meta` board. Rename them to taste.
+
+## Install
+
+Requires Docker with Compose. The stack is web (nginx), php-fpm, MySQL, Redis, and
+optional Cloudflare Tunnel, Tor and I2P containers.
+>OYY DOCTOS "==cp== .env.example" OYYYY
+```bash
+git clone <your-fork-url> dchan && cd dchan
+git submodule update --init --recursive   # js/wPaint, js/twemoji, inc/lib/parsedown
+cp .env.example .env                       # then edit: set every password/token
+docker compose up -d --build
+```
+
+`install.sql` seeds the schema and the stock vichan `admin` account on first boot.
+Open `http://127.0.0.1:9080/install.php` to finish setup, then log in at `/mod.php`
+as `admin` and **change the password immediately**.
+
+Then build the static pages and create the two staff-only boards (`/j/` and `/test/`):
+
+```bash
+docker compose exec -T -u www-data -w /var/www php php tools/imgboard-rebuild.php
+```
+
+This is idempotent, so re-run it after any code change. It creates `/j/` (staff board,
+Staff IDs on) and `/test/` (staff scratch board) if they don't exist, seeds the Root owner,
+and rebuilds every board and thread. Both boards are gated to logged-in staff at the web
+server (`staffcheck.php` + the `j|test` rule in `docker/nginx/vichan.conf`) and hidden from
+the public board list and overboard; the staff-board list is `$config['imgboard_staff_boards']`
+in `inc/instance-config.php`.
+
+Notes:
+- Edit `.env` before the first `up`: fill in `VICHAN_MYSQL_PASSWORD`, the three `MYSQL_*`
+  passwords, `VICHAN_CACHE_PASSWORD`, and (if you use the tunnel) `TUNNEL_TOKEN`.
+  The MySQL password must match on both the `VICHAN_MYSQL_PASSWORD` and `MYSQL_PASSWORD` lines.
+- The site binds to `127.0.0.1:9080` only. It is meant to sit behind Cloudflare (Tunnel or
+  proxy), which supplies the real IP and country headers. To reach it directly on a LAN,
+  change the `ports` line in `compose.yml`.
+- To run without the Cloudflare Tunnel, Tor or I2P, remove or comment out those services in
+  `compose.yml`.
+- Data lives in `./local-instances/<INSTANCE>/` (bind-mounted www and db). Set `INSTANCE` in
+  `.env` to run more than one site from the same checkout.
+- Reset the database by stopping the stack and deleting `./local-instances/<INSTANCE>/db`;
+  `install.sql` re-seeds on the next boot.
+
+## New site checklist
+
+1. Replace `example.com` and, if you like, the `imgboard` prefix.
+2. Create `inc/secrets.php` (never commit it) and change the cookie/trip salts in
+   `inc/instance-config.php`.
+3. `docker compose up` (see `compose.yml`, `docker/`), then open `/install.php`.
+   `install.sql` seeds the stock vichan `admin` account: change its password immediately.
+4. Add a logo (`$config['logo']`), favicon (`/favicon.ico`) and banners in `static/banners/`
+   (the banner endpoint returns 404 until one exists).
+5. Create a `meta` board: the Schizo reset (below) keeps it and wipes everything else.
+   Use a different URI by editing `inc/mod/pending.php` and `templates/mod/schizo.html`.
+6. Edit rules, news, ToS and privacy from the site itself (Admin+). The defaults (rules, ToS, privacy, Report Abuse, footer)
+   carry the placeholder contact email `contact@example.com` (with TODO comments marking each spot); put your own contact info in
+   every one of them (`inc/mod/pending.php`, `templates/footer.html`, `SECURITY.md`).
+   The home page is `templates/imgboard_home.html`.
+7. Set the optional keys you want (Turnstile site/secret, `VICHAN_PROXYCHECK_KEY`); features
+   with no key simply stay off.
+
+## Where things live
+
+| What | Where |
+|---|---|
+| Instance settings, permission levels, feature switches | `inc/instance-config.php`, `inc/config.php` |
+| Moderation handlers and defaults | `inc/mod/pending.php`, `inc/mod/steg.php` |
+| Mod templates | `templates/mod/` |
+| Front-end extras | `js/imgboard-*.js`, `js/toast.js`, `js/theme-effects.js` |
+| Maintenance and self-checks | `tools/` |
+| Containers (nginx, php-fpm, tor, i2pd) | `docker/`, `compose.yml` |
+
+## Features
+
+### Staff ranks
+Linear levels: Mediator 5 < Janitor 10 < Mod 20 < Admin 30 < Manager 35 < Root 40.
+A permission is a minimum level, so lowering one also grants it to every higher rank.
+New sensitive features should pick an explicit level in `inc/instance-config.php`.
+
+### Approval systems
+- **Media Pending Approval**: uploads are replaced by a text placeholder until approved.
+- **Link Pending Approval**: external links in posts show as `[Link Pending Approval]`
+  until approved (staff always see the real link).
+- Both halves live in one `/pending` queue with CSRF-protected approve actions.
+- **Post Pending Approval (PPA)**: optionally hold non-staff posts for review, switchable per board from the Pending page.
+  Posts via the Tor and I2P mirrors are held by default.
+- **Blocklists**: blocked words and links; Janitors suggest, Mods approve or delete.
+- **Mediator proposals**: Mediators propose a deletion or ban, Janitors+ approve or deny.
+
+### Moderation and visibility
+- Tiered identifier visibility: Mediators see only a super-hashed IP token, Janitors an
+  opaque poster number, Mods the IP and device identifiers, Admins the full fingerprint breakdown.
+- DTEG browser fingerprinting (`js/dteg/`: device and headless checks, WebRTC IP discovery, extension detection, input-cadence timing without keystroke content) with a trust score, a per-visitor list and bulk export
+  (Manager+ only), plus VPN/proxy detection (proxycheck.io) beside the IP.
+- File-hash bans, steganography check on images, per-board IP post deletion.
+- Admin-editable mod log, drag-to-reorder top bar editor, mod-mode overboard (`?/o`).
+- "View as <role>" preview with a persistent banner.
+- Staff-only boards: `/j/` (staff) and `/test/` (staff scratch) ship by default, hidden from
+  the public board list and overboard and gated to logged-in staff at the web server. To add
+  another, append it to `$config['imgboard_staff_boards']` in `inc/instance-config.php` **and**
+  to both `j|test` regexes in `docker/nginx/vichan.conf` (the static-file gate), then create
+  the board in the mod panel.
+- Per-board anonymous-name settings and an admin-managed random name list.
+- Login throttling per username and per IPv6 /64.
+
+### Emergency controls
+- **JSID** (permanent, Root only) and **Temp-JSID** (temporary, any admin) killswitch with
+  a down-since timer.
+- **Schizo**: nuclear reset that deletes every board except `meta`, wipes it down to its
+  stickied and locked threads, and fires all mods. Manager and Root only.
+
+### Posting
+- Cloudflare Turnstile on new threads, image-captcha fallback, country flags from
+  Cloudflare's header.
+- Extra upload types: WebM (with audio) and JPEG XL, AVIF, HEIC/HEIF, TIFF, ICO, MP4, all validated by ffmpeg or ImageMagick and thumbnailed. Ctrl+Enter submits the post form and quick reply.
+- URL embeds (YouTube, Vimeo, Dailymotion, Rumble and more), polls, Tegaki and wPaint
+  drawing, MathJax, themed effects, ImgOps link.
+- Many optional client scripts: quick reply, inline expanding, hover previews, thread
+  watcher, infinite scroll, catalog search, post filtering, favourites and the rest of `js/`.
+
+### Hosting
+- Docker stack with nginx, php-fpm, MySQL, Redis, plus optional Tor and I2P mirrors.
+- Built to sit behind Cloudflare (Tunnel or proxy); real IP and country come from its headers.
+- nginx denies PHP execution under `src/` and `thumb/`, so uploads never execute.
+
+## Security rules for changes
+
+1. Never commit secrets (`.env`, `inc/secrets.php`).
+2. SQL only through `prepare()` and `bindValue()`; board and table names only from validated sources.
+3. Mod actions need both gates: `secure` / `secure_POST` (CSRF token) on the route and a
+   `hasPermission()` check in the handler. Hiding a button is not a gate.
+4. Log every staff action with `modLog()`.
+5. Escape output; use `|raw` only deliberately.
+6. Every automatic defence (filter, ban, rate limit, hash ban) needs a staff screen and an undo.
+7. Bulk-data access (fingerprints, IPs) is Manager+.
+
+## Not included
+
+Deploy and backup scripts, secrets, branding images, banners.
+Licenses: `LICENSE.md`, `LICENSE.Tinyboard.md`.
+"# dchan" 
