@@ -1,0 +1,11 @@
+<footer>
+    <p class="unimportant" style="margin-top:20px;text-align:center;">- Tinyboard + 
+        <a href="https://github.com/vichan-devel/vichan">vichan</a> {{ config.version }} + <a href="https://github.com/mortally4634/dchan">dchan</a> 
+        {% if check_container() %}Running Containerized{% endif %}
+    -
+    <br>Tinyboard Copyright &copy; 2010-2014 Tinyboard Development Group    
+    <br><a href="https://github.com/vichan-devel/vichan">vichan</a> Copyright &copy; 2012-2025 vichan-devel</p>
+    {% for footer in config.footer %}<p class="unimportant" style="text-align:center;">{{ footer }}</p>{% endfor %}
+    <p class="unimportant" style="text-align:center;">{# TODO: replace contact@example.com and this operator wording with your own contact info. #}Ran, owned, hosted, and managed by [your organization]. For legal reasons, site/hosting inquiries, and other general inquiries, contact us at <a href="mailto:contact@example.com">contact@example.com</a>.</p>
+    <p class="unimportant" style="text-align:center;"><a href="/tos.php">Terms of Service</a> &middot; <a href="/privacy.php">Privacy Policy</a> &middot; <a href="/abuse.php">Report Abuse</a></p>
+</footer>

@@ -1,0 +1,192 @@
+/**
+ * tomorrow.css
+ * 4chan-style "Tomorrow" dark theme (Tomorrow Night palette).
+ * Palette: bg #1d1f21, panel #282a2e, border #373b41, text #c5c8c6,
+ *          blue #81a2be, green #b5bd68, red #cc6666, purple #b294bb,
+ *          aqua #8abeb7, muted #969896.
+ */
+body {
+	background: #1d1f21;
+	color: #c5c8c6;
+	font-family: sans-serif;
+	font-size: 12px;
+}
+span.quote {
+	color: #b5bd68;
+}
+h1 {
+	font-size: 20pt;
+	text-align: center;
+	letter-spacing: 0px;
+}
+div.title, h1 {
+	color: #81a2be;
+	font-family: Arial, Helvetica, sans-serif;
+}
+div.title p {
+	font-size: 10px;
+}
+a:link, a:visited, .intro a.email span.name {
+	color: #81a2be;
+	text-decoration: none;
+	font-family: sans-serif;
+}
+a:link:hover, a:visited:hover {
+	color: #8abeb7;
+	text-decoration: none;
+}
+a.post_no {
+	color: #969896;
+	text-decoration: none;
+}
+a.post_no:hover {
+	color: #81a2be !important;
+	text-decoration: underline overline;
+}
+div.post.reply {
+	background: #282a2e;
+	border: #373b41 1px solid;
+	-webkit-border-radius: 3px;
+	-moz-border-radius: 3px;
+	border-radius: 3px;
+}
+div.post.reply.highlighted {
+	background: #373b41;
+	border: transparent 1px solid;
+}
+div.post.reply div.body a:link, div.post.reply div.body a:visited {
+	color: #81a2be;
+}
+div.post.reply div.body a:link:hover, div.post.reply div.body a:visited:hover {
+	color: #8abeb7;
+}
+.intro span.subject {
+	font-size: 12px;
+	font-family: sans-serif;
+	color: #cc6666;
+	font-weight: 800;
+}
+.intro span.name {
+	color: #c5c8c6;
+	font-weight: 800;
+}
+.intro a.capcode, p.intro a.nametag {
+	color: #b294bb;
+	margin-left: 0;
+}
+.intro a.email, p.intro a.email span.name, p.intro a.email:hover, p.intro a.email:hover span.name {
+	color: #8abeb7;
+}
+input[type="text"], textarea, select {
+	background: #282a2e;
+	color: #c5c8c6;
+	border: #373b41 1px solid;
+	padding-left: 5px;
+	font-family: sans-serif;
+	font-size: 10pt;
+}
+input[type="password"] {
+	background: #282a2e;
+	color: #c5c8c6;
+	border: #373b41 1px solid;
+}
+form table tr th {
+	background: #282a2e;
+	color: #969896;
+	font-weight: 800;
+	text-align: left;
+	padding: 0;
+}
+div.banner {
+	background: #81a2be;
+	color: #1d1f21;
+	text-align: center;
+	width: 250px;
+	padding: 4px 12px;
+	margin-left: auto;
+	margin-right: auto;
+	font-size: 12px;
+}
+div.banner a {
+	color: #1d1f21;
+}
+input[type="submit"] {
+	background: #282a2e;
+	border: #373b41 1px solid;
+	color: #c5c8c6;
+}
+input[type="submit"]:hover {
+	background: #373b41;
+	border: #373b41 1px solid;
+	color: #81a2be;
+}
+input[type="text"]:focus {
+	border: #81a2be 1px solid;
+}
+p.fileinfo a:hover {
+	text-decoration: underline;
+}
+span.trip {
+	color: #969896;
+}
+div.pages {
+	color: #969896;
+	background: #282a2e;
+	border: #373b41 1px solid;
+	font-family: sans-serif;
+	font-size: 10pt;
+}
+div.pages a.selected {
+	color: #c5c8c6;
+}
+hr {
+	height: 1px;
+	border: #373b41 1px solid;
+}
+div.boardlist {
+	color: #969896;
+	background-color: rgba(10%, 10%, 10%, 0.10);
+}
+div.ban {
+	background-color: transparent;
+	border: transparent 0px solid;
+}
+div.ban h2 {
+	background: transparent;
+	color: #cc6666;
+	font-size: 12px;
+}
+table.modlog tr th {
+	background: #282a2e;
+	color: #969896;
+}
+div.boardlist:not(.bottom) {
+	text-shadow: black 1px 1px 1px, black -1px -1px 1px, black -1px 1px 1px, black 1px -1px 1px;
+	background-color: #282a2e;
+}
+.desktop-style div.boardlist:not(.bottom):hover, .desktop-style div.boardlist:not(.bottom).cb-menu {
+	background-color: rgba(30%, 30%, 30%, 0.65);
+}
+div.report {
+	color: #969896;
+}
+/* options.js */
+#options_div, #alert_div {
+	background: #282a2e;
+	color: #c5c8c6;
+}
+.options_tab_icon {
+	color: #969896;
+}
+.options_tab_icon.active {
+	color: #ffffff;
+}
+#quick-reply table {
+	background: none repeat scroll 0% 0% #282a2e !important;
+}
+
+span.heading {
+	color: #ff7a7a;
+}
+
+.imgboard-box-head { background: #81a2be; color: #000; }

@@ -1,0 +1,22 @@
+{% if post.mod %}
+	{% set hs = post.ip|hs_label %}
+	{% if post.mod|hasPermission(config.mod.show_ip, board.uri) %}
+		{# Mod + Admin: real IP, VPN, HWID, cookie, and the fingerprint (+ ALT). #}
+		{# The ?/fp/ page itself shows the raw signal breakdown to Admins only. #}
+		 [<a class="ip-link" style="margin:0;" href="?/IP/{{ post.ip }}">{{ post.ip }}</a>]{% if hs %}<span class="poster-hs" title="Posted via the {{ hs }} hidden-service mirror" style="margin-left:4px;color:#fff;background:{% if hs == 'Tor' %}#7d4698{% else %}#2a60c4{% endif %};padding:0 4px;border-radius:3px;font-weight:bold;">[{{ hs }}]</span>{% endif %}
+		{% if post.is_vpn and config.display_flags %}<span class="poster-vpn" title="IP flagged as VPN/proxy" style="margin-left:4px;color:#b00;font-weight:bold;">[VPN/Proxy]</span>{% endif %}
+		{% if post.hwid %}<span class="poster-hwid unimportant" title="Device fingerprint (HWID) — click to find posts with this HWID" style="margin-left:4px;">[<a class="ip-link" style="margin:0;" href="?/search/posts/{{ post.hwid }}">HWID {{ post.hwid }}</a>]</span>{% endif %}
+		{% if post.cookie_id %}<span class="poster-cookie unimportant" title="Cookie id — click to find posts with this cookie" style="margin-left:4px;">[<a class="ip-link" style="margin:0;" href="?/search/posts/{{ post.cookie_id }}">C {{ post.cookie_id[:12] }}</a>]</span>{% endif %}
+		{% if post.fp_hash %}{% set fpa = post.fp_hash|fp_alt %}<span class="poster-fp unimportant" title="Browser fingerprint — click for the fingerprint detail" style="margin-left:4px;">[<a class="ip-link" style="margin:0;" href="?/fp/{{ post.fp_hash }}">FP {{ post.fp_hash[:15] }}{% if post.fp_hash|length > 15 %}...{% endif %}</a>]</span>{% if fpa.alt %}<a class="ip-link poster-alt" style="margin-left:4px;color:#fff;background:#b00;padding:0 4px;border-radius:3px;font-weight:bold;" title="Likely alt / ban evasion: {{ fpa.cookies }} cookie id(s) and {{ fpa.ips }} IP(s) share this fingerprint" href="?/fp/{{ post.fp_hash }}">&#9888; ALT</a>{% endif %}{% endif %}
+	{% elseif post.mod|hasPermission(config.mod.fp_hashed, board.uri) %}
+		{# Janitor: hashed IP + cookie + HWID + a FP number, each clickable to pull
+		   up that identifier's post history. Use [note] for notes on the poster. #}
+		{% if post.ip %} [<a class="ip-link" style="margin:0;" href="?/search/posts/{{ post.ip }}" title="Hashed IP — click for this IP's post history">IP:{{ post.ip|fp_superip }}</a>]{% if hs %}<span class="poster-hs" title="Posted via the {{ hs }} hidden-service mirror" style="margin-left:4px;color:#fff;background:{% if hs == 'Tor' %}#7d4698{% else %}#2a60c4{% endif %};padding:0 4px;border-radius:3px;font-weight:bold;">[{{ hs }}]</span>{% endif %}{% endif %}
+		{% if post.hwid %}<span class="poster-hwid unimportant" title="Device fingerprint (HWID) — click for this device's post history" style="margin-left:4px;">[<a class="ip-link" style="margin:0;" href="?/search/posts/{{ post.hwid }}">HWID {{ post.hwid }}</a>]</span>{% endif %}
+		{% if post.cookie_id %}<span class="poster-cookie unimportant" title="Cookie id — click for this cookie's post history" style="margin-left:4px;">[<a class="ip-link" style="margin:0;" href="?/search/posts/{{ post.cookie_id }}">C {{ post.cookie_id[:12] }}</a>]</span>{% endif %}
+		{% if post.fp_hash %}<span class="poster-fp unimportant" title="Poster number — click for this device's post history" style="margin-left:4px;">[<a class="ip-link" style="margin:0;" href="?/search/posts/{{ post.fp_hash }}">#{{ post.fp_hash|fp_jannie }}</a>]</span>{% endif %}
+	{% elseif post.mod|hasPermission(config.mod.fp_ip_token, board.uri) %}
+		{# Mediator: only a super-hashed IP token — no fingerprint or other identifier. #}
+		 <span class="poster-fp unimportant" title="Source IP (super-hashed — not the real address)" style="margin-left:4px;">[IP:{{ post.ip|fp_superip }}]</span>{% if hs %}<span class="poster-hs" title="Posted via the {{ hs }} hidden-service mirror" style="margin-left:4px;color:#fff;background:{% if hs == 'Tor' %}#7d4698{% else %}#2a60c4{% endif %};padding:0 4px;border-radius:3px;font-weight:bold;">[{{ hs }}]</span>{% endif %}
+	{% endif %}
+{% endif %}

@@ -1,0 +1,38 @@
+<div class="modreq-form">
+	<form action="?/{{ board }}/{{ action == 'ban' ? 'voteban' : 'votedelete' }}/{{ post_id }}" method="post">
+		<input type="hidden" name="token" value="{{ token }}">
+		<p>
+			You are proposing to <strong>{{ action == 'ban' ? 'ban the poster of' : 'delete' }}</strong>
+			post <code>/{{ board }}/ #{{ post_id }}</code>.
+			This does not {{ action == 'ban' ? 'ban' : 'delete' }} anything by itself &mdash;
+			it files a request for a Janitor or higher to approve.
+		</p>
+
+		{% if snippet %}
+			<blockquote class="modreq-snippet" style="border-left:3px solid #B7C5D9;margin:8px 0;padding:4px 10px;color:#555;white-space:pre-wrap;">{{ snippet|e }}</blockquote>
+		{% endif %}
+
+		<table>
+			<tr>
+				<th><label for="modreq_reason">Reason</label></th>
+				<td>
+					<textarea id="modreq_reason" name="reason" rows="4" cols="48"
+						placeholder="{{ action == 'ban' ? 'Why should this poster be banned?' : 'Why should this post be deleted?' }}"></textarea>
+				</td>
+			</tr>
+			{% if action == 'ban' %}
+			<tr>
+				<th><label for="modreq_duration">Length</label></th>
+				<td>
+					<input id="modreq_duration" type="text" name="duration" size="16" placeholder="e.g. 2d, 1w">
+					<span class="unimportant">blank = permanent &middot; applies site-wide &middot; a Janitor+ approves</span>
+				</td>
+			</tr>
+			{% endif %}
+			<tr>
+				<td></td>
+				<td><input type="submit" value="{{ action == 'ban' ? 'Submit ban proposal' : 'Submit deletion proposal' }}"></td>
+			</tr>
+		</table>
+	</form>
+</div>

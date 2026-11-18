@@ -1,0 +1,27 @@
+{# The flag itself: unchanged. #}
+{% if config.display_flags and post.modifiers.flag %}
+	 <img
+		{% if config.country_flags_condensed %}
+			 class="flag flag-{{ post.modifiers.flag }}" src="{{ config.image_blank }}"
+		{% else %}
+			 class="flag" src="{{ config.uri_flags|sprintf(post.modifiers.flag) }}"
+		{% endif %}
+		 style="{% if post.modifiers['flag style'] %}
+				{{ post.modifiers['flag style'] }}
+			{% else %}
+				{{ config.flag_style }}
+			{% endif %}"
+
+		{% if post.modifiers['flag alt'] %} alt="{{ post.modifiers['flag alt'] | e('html_attr') }}"
+			 title="{{ post.modifiers['flag alt'] | e('html_attr') }}"
+		{% endif %}
+	>
+{% endif %}
+{# On country-flag boards, a public [Tor] / [I2P] / [VPN/Proxy] tag beside the flag (the same signals
+   staff see in the IP line). Decided by the POST's own board, so it also works on the overboard, which
+   renders many boards with global settings. Tor/I2P come from the poster's stand-in address
+   (imgboard_hs_label), VPN/Proxy from the stored lookup. #}
+{% if post.board|default(board.uri)|flag_board %}
+	{% set hs = post.ip|hs_label %}
+	{% if hs %} <span class="poster-network" title="Posted via the {{ hs }} hidden-service mirror" style="font-weight:bold;color:{% if hs == 'Tor' %}#7d4698{% else %}#2a60c4{% endif %};">[{{ hs }}]</span>{% elseif post.is_vpn %} <span class="poster-network" title="This IP is a known VPN or proxy" style="font-weight:bold;color:#b00;">[VPN/Proxy]</span>{% endif %}
+{% endif %}

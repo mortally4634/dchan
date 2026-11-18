@@ -1,0 +1,154 @@
+{#
+	Combined pending queue: files + links in one page (/pending).
+	`sections` is a list of { kind, title, anchor, pending } the handler builds
+	from whichever queues the mod may act on. The whole thing stays inside one
+	.pending-approval container so the 20s auto-update below refreshes both.
+#}
+<div class="pending-approval">
+	{% if pending_posts is defined and (pending_posts|length > 0 or ppa_enabled or ppa_can_toggle) %}
+		<section id="pending-posts" class="pending-section" data-kind="post">
+			<h2 style="margin:12px 0 4px;">Pending posts
+				{% if ppa_can_toggle %}
+					<small style="font-weight:normal;">&mdash; hold new posts on:
+						{% for b in ppa_board_toggles %}
+							<label style="margin-right:6px;"><input type="checkbox" {% if b.on %}checked{% endif %} onchange="window.location='?/ppa/toggle/{{ b.uri }}/{{ b.token }}'"> /{{ b.uri }}/</label>
+						{% endfor %}
+					</small>
+				{% endif %}
+			</h2>
+			<p>
+				{% if pending_posts|length == 0 %}
+					No posts are awaiting approval.{% if not ppa_enabled %} Post holding is off on every board.{% endif %}
+				{% else %}
+					{{ pending_posts|length }} post(s) awaiting approval. Approving publishes the post; rejecting deletes it and its uploaded files.
+				{% endif %}
+			</p>
+			{% for p in pending_posts %}
+				<fieldset>
+					<legend>
+						/{{ p.board|e }}/ &mdash; {{ p.is_op ? 'new thread' : 'reply' }}{% if p.thread %} to #{{ p.thread }}{% endif %}
+						&nbsp;
+						<a class="approve-link" href="?/ppa/approve/{{ p.id }}/{{ p.approve_token }}">[Approve]</a>
+						<a class="reject-link" style="color:#b00" href="?/ppa/reject/{{ p.id }}/{{ p.reject_token }}" onclick="return confirm('Reject and delete this post and its files?')">[Reject]</a>
+					</legend>
+					<div style="padding:4px 2px;">
+						{% if p.subject %}<strong>{{ p.subject|e }}</strong> {% endif %}
+						{% if p.name %}<span class="unimportant">by {{ p.name|e }}</span> {% endif %}
+						<span class="unimportant">&middot; {{ p.num_files }} file(s) &middot; {{ p.ip|e }} &middot; {{ p.time|date('Y-m-d H:i') }}</span>
+						<div style="margin-top:4px;white-space:pre-wrap;word-break:break-word;">{{ p.body_preview|e }}</div>
+					</div>
+				</fieldset>
+			{% endfor %}
+		</section>
+	{% endif %}
+	{% for s in sections %}
+		<section id="pending-{{ s.anchor }}" class="pending-section" data-kind="{{ s.kind }}">
+			{% if sections|length > 1 %}<h2 style="margin:12px 0 4px;">{{ s.title }}</h2>{% endif %}
+			<p>
+				{% if s.pending|length == 0 %}
+					There are no {{ s.kind }}s pending approval.
+				{% else %}
+					{{ s.pending|length }} post(s) have {{ s.kind }}s waiting for approval. Approving a
+					post reveals the real {{ s.kind }} in place of the placeholder; rejecting deletes the post.
+				{% endif %}
+			</p>
+
+			{% for post in s.pending %}
+				<fieldset>
+					<legend>
+						/{{ post.board }}/ &mdash; post
+						<a href="?/{{ post.board }}/res/{{ post.thread ? post.thread : post.id }}.html#{{ post.id }}">#{{ post.id }}</a>
+						&nbsp;
+						<a class="approve-link" href="?/{{ post.board }}/{{ post.approve_action }}/{{ post.id }}/{{ post.approve_token }}">[Approve]</a>
+						<a class="reject-link" style="color:#b00" href="?/{{ post.board }}/{{ post.reject_action }}/{{ post.id }}/{{ post.reject_token }}" onclick="return confirm('Reject (delete) this post?')">[Reject]</a>
+						{% if s.kind == 'file' %}
+							<a class="reject-link" style="color:#b00" href="?/{{ post.board }}/{{ post.reject_extra_action }}/{{ post.id }}/{{ post.reject_extra_token }}" onclick="return confirm('Reject this post and hash-ban the file so it cannot be reposted?')">[Reject + hashban]</a>
+						{% else %}
+							<a class="reject-link" style="color:#b00" href="?/{{ post.board }}/{{ post.reject_extra_action }}/{{ post.id }}/{{ post.reject_extra_token }}" onclick="return confirm('Reject this post and block its link(s) site-wide?')">[Reject + ban link]</a>
+						{% endif %}
+					</legend>
+
+					{# File preview: the post below now renders the real image directly
+					   (imgboard_pending_queue builds pending posts as approved for staff),
+					   so the separate placeholder-replacement thumbnail is gone. #}
+					{% if s.kind == 'link' and post.preview_links %}
+						<div class="staff-preview" style="margin:6px 0;padding:6px;background:#f4f4f4;border:1px solid #ccc;">
+							<strong>Link(s) in this post (staff only):</strong>
+							<ul style="margin:4px 0 0;">
+								{% for l in post.preview_links %}
+									<li><a href="{{ l }}" target="_blank" rel="noreferrer nofollow">{{ l }}</a></li>
+								{% endfor %}
+							</ul>
+						</div>
+					{% endif %}
+
+					{{ post.built }}
+				</fieldset>
+			{% endfor %}
+		</section>
+	{% endfor %}
+</div>
+
+<script>
+/* Auto-update the pending queue in place (every 20s) so new submissions and
+   approvals/rejections appear without a manual refresh. Plays a short chime
+   whenever the number of pending posts goes up (a new item arrived). */
+(function(){
+	var url = location.href;
+
+	// Each pending post is one <fieldset>; count them to detect new arrivals.
+	function pendingCount(root){ return root.querySelectorAll('.pending-approval fieldset').length; }
+
+	// Chime via WebAudio (no asset). Browsers gate audio until a user gesture,
+	// so unlock the context on the first interaction with the page.
+	var audioCtx = null;
+	function ensureCtx(){
+		try {
+			if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+			if (audioCtx.state === 'suspended') audioCtx.resume();
+		} catch (e) { audioCtx = null; }
+		return audioCtx;
+	}
+	['pointerdown','keydown'].forEach(function(ev){
+		document.addEventListener(ev, ensureCtx, { once: true });
+	});
+
+	function chime(){
+		var ctx = ensureCtx();
+		if (!ctx) return;
+		var now = ctx.currentTime;
+		[[880, 0], [1320, 0.12]].forEach(function(n){
+			var osc = ctx.createOscillator(), gain = ctx.createGain();
+			osc.type = 'sine';
+			osc.frequency.value = n[0];
+			osc.connect(gain); gain.connect(ctx.destination);
+			var t = now + n[1];
+			gain.gain.setValueAtTime(0.0001, t);
+			gain.gain.exponentialRampToValueAtTime(0.25, t + 0.02);
+			gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+			osc.start(t); osc.stop(t + 0.24);
+		});
+	}
+
+	var lastCount = pendingCount(document);
+
+	setInterval(function(){
+		fetch(url, { credentials: 'same-origin', headers: { 'X-Requested-With': 'fetch' } })
+			.then(function(r){ return r.ok ? r.text() : null; })
+			.then(function(html){
+				if (!html) return;
+				var doc   = new DOMParser().parseFromString(html, 'text/html');
+				var fresh = doc.querySelector('.pending-approval');
+				var cur   = document.querySelector('.pending-approval');
+				if (!fresh || !cur) return;
+				var freshCount = pendingCount(doc);
+				if (freshCount > lastCount) { chime(); }
+				lastCount = freshCount;
+				if (fresh.innerHTML !== cur.innerHTML) {
+					cur.innerHTML = fresh.innerHTML;
+				}
+			})
+			.catch(function(){});
+	}, 20000);
+})();
+</script>

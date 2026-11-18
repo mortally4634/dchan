@@ -1,0 +1,91 @@
+<div class="steg">
+	<p>
+		<a href="{{ file_url }}" target="_blank">{{ file }}</a> &mdash; {{ report.type }},
+		{{ report.size|number_format }} bytes{% if report.width %}, {{ report.width }}&times;{{ report.height }}{% endif %}<br>
+		MD5 {{ report.md5 }}<br>SHA-1 {{ report.sha1 }}
+	</p>
+
+	<h3>Findings</h3>
+	{% if report.flags %}
+		<ul>
+		{% for f in report.flags %}
+			<li>{% if f[0] == 'warn' %}<strong>&#9888; {{ f[1] }}</strong>{% else %}{{ f[1] }}{% endif %}</li>
+		{% endfor %}
+		</ul>
+	{% else %}
+		<p>Nothing suspicious found by the automatic checks. (This does not prove nothing is hidden.)</p>
+	{% endif %}
+
+	{% if report.appended %}
+		<h3>Data after the end of the image</h3>
+		<p>Starts at byte {{ report.appended.offset }}, {{ report.appended.length|number_format }} bytes{% if report.appended.kind %}, looks like a {{ report.appended.kind }}{% endif %}.</p>
+		<pre>{{ report.appended.preview }}</pre>
+		<p>Hex: <code>{{ report.appended.hex }}</code></p>
+		{% if report.appended_strings %}<p>Strings:</p><pre>{% for s in report.appended_strings %}{{ s }}
+{% endfor %}</pre>{% endif %}
+	{% endif %}
+
+	{% if report.signatures %}
+		<h3>File signatures inside the file</h3>
+		<ul>
+		{% for s in report.signatures %}
+			<li>{{ s.name }} at byte {{ s.offset|number_format }}{% if s.note %} <em>({{ s.note }})</em>{% endif %}</li>
+		{% endfor %}
+		</ul>
+	{% endif %}
+
+	{% if report.metadata or report.unusual %}
+		<h3>Metadata</h3>
+		{% for m in report.metadata %}
+			<p><strong>{{ m[0] }}</strong></p><pre>{{ m[1] }}</pre>
+		{% endfor %}
+		{% for u in report.unusual %}
+			<p><strong>Unusual PNG chunk {{ u.name }}</strong> ({{ u.length|number_format }} bytes)</p>
+		{% endfor %}
+	{% endif %}
+
+	{% if report.lsb %}
+		<h3>Pixel bits (LSB)</h3>
+		{% if report.lsb.note %}<p><em>{{ report.lsb.note }}</em></p>{% endif %}
+		{% if report.lsb.supported %}
+			<p>Searched the first {{ report.lsb.scanned|number_format }} pixels, lowest bit.</p>
+			{% if report.lsb.stats %}
+				<p>Percent of 1s per channel (bits 0, 1, 2; ~50% in the lowest bit of all channels suggests random/encrypted data):</p>
+				<table class="modlog">
+					{% for ch, v in report.lsb.stats %}<tr><th>{{ ch }}</th><td>{{ v[0] }}%</td><td>{{ v[1] }}%</td><td>{{ v[2] }}%</td></tr>{% endfor %}
+				</table>
+			{% endif %}
+			{% if report.lsb.candidates %}
+				<p><strong>Text-like or file-like data found:</strong></p>
+				{% for c in report.lsb.candidates %}
+					<p>{{ c.stream }} bit {{ c.bit }}, {{ c.order }}, {{ c.run }} readable characters in a row{% if c.magic %}, starts like a {{ c.magic }}{% endif %}</p>
+					<pre>{{ c.text }}</pre>
+				{% endfor %}
+			{% else %}
+				<p>No readable text or file header found in the lowest bit.</p>
+			{% endif %}
+		{% endif %}
+	{% endif %}
+
+	{% if planes_ok %}
+		<h3>Bit-plane viewer</h3>
+		<p>White = the bit is set. Hidden messages often show as noise in the top-left or as a pattern in bit 0&ndash;2.</p>
+		<p>
+			Channel:
+			{% for ch in ['RGB', 'R', 'G', 'B'] %}
+				{% if ch == view_channel %}<strong>[{{ ch }}]</strong>{% else %}<a href="{{ base }}&v={{ ch }}&b={{ view_bit }}">{{ ch }}</a>{% endif %}
+			{% endfor %}
+			&nbsp; Bit:
+			{% for b in 0..7 %}
+				{% if b == view_bit %}<strong>[{{ b }}]</strong>{% else %}<a href="{{ base }}&v={{ view_channel }}&b={{ b }}">{{ b }}</a>{% endif %}
+			{% endfor %}
+		</p>
+		<p><img src="{{ plane_url }}" alt="bit plane" style="max-width:100%;image-rendering:pixelated;border:1px solid #888;"></p>
+	{% endif %}
+
+	{% if report.strings %}
+		<h3>Long readable strings in the file</h3>
+		<pre>{% for s in report.strings %}{{ s }}
+{% endfor %}</pre>
+	{% endif %}
+</div>

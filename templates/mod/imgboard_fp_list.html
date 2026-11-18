@@ -1,0 +1,59 @@
+<div class="imgboard-fp-list">
+	<style>
+		.imgboard-fp-list table { border-collapse: collapse; margin: 6px 0 14px; width: 100%; }
+		.imgboard-fp-list th, .imgboard-fp-list td { border: 1px solid #99a; padding: 2px 6px; text-align: left; font-size: 11px; vertical-align: top; }
+		.imgboard-fp-list th { background: #9988ee; color: #fff; }
+		.imgboard-fp-list td.mono { font-family: monospace; word-break: break-all; }
+		.imgboard-fp-list .fp-btn { display: inline-block; padding: 3px 10px; margin: 0 6px 8px 0; border: 1px solid #9988ee; border-radius: 3px; background: #f3f1ff; color: #34345c; text-decoration: none; font-size: 12px; }
+		.imgboard-fp-list .fp-btn:hover { background: #9988ee; color: #fff; }
+		.imgboard-fp-list .muted { color: #778; font-size: 11px; }
+		.imgboard-fp-list .pager a, .imgboard-fp-list .pager strong { padding: 1px 7px; border: 1px solid #9988ee; border-radius: 3px; text-decoration: none; margin-right: 4px; }
+		.imgboard-fp-list .pager strong { background: #9988ee; color: #fff; }
+	</style>
+
+	<p>
+		<a class="fp-btn" href="?/fingerprints/zip">&#8681; Download all ({{ total }}) as .zip</a>
+		<span class="muted">Every visitor the fingerprint store has seen &mdash; posters and lurkers alike. One device (fingerprint) per row.</span>
+	</p>
+
+	{% if visitors is empty %}
+		<p class="muted">No fingerprints on record yet.</p>
+	{% else %}
+	<table>
+		<tr>
+			<th>Fingerprint</th>
+			<th>IP</th>
+			<th>HWID</th>
+			<th>Cookie</th>
+			<th>Trust</th>
+			<th title="sightings / cookies / IPs / hwids">Seen</th>
+			<th>First</th>
+			<th>Last</th>
+			<th>Hits</th>
+			<th></th>
+		</tr>
+		{% for v in visitors %}
+		<tr>
+			<td class="mono"><a href="?/fp/{{ v.stable_hash|e }}">{{ v.stable_hash|slice(0, 16) }}</a></td>
+			<td class="mono">{{ v.ip ? v.ip|e : '-' }}</td>
+			<td class="mono">{{ v.hwid ? v.hwid|slice(0, 16) : '-' }}</td>
+			<td class="mono">{{ v.cookie_id ? v.cookie_id|slice(0, 12) : '-' }}</td>
+			<td>{{ v.trust is null ? '?' : v.trust }}</td>
+			<td>{{ v.sightings }} / {{ v.cookies }}c / {{ v.ips }}ip / {{ v.hwids }}hw</td>
+			<td>{{ v.first_seen|date('Y-m-d') }}</td>
+			<td>{{ v.last_seen|date('Y-m-d H:i') }}</td>
+			<td>{{ v.hits }}</td>
+			<td><a class="fp-btn" href="?/fp/{{ v.stable_hash|e }}&amp;format=txt" download="fingerprint-{{ v.stable_hash|e }}.txt">.txt</a></td>
+		</tr>
+		{% endfor %}
+	</table>
+
+	{% if pages > 1 %}
+	<div class="pager">
+		{% if page > 1 %}<a href="?/fingerprints&amp;page={{ page - 1 }}">&laquo; prev</a>{% endif %}
+		<strong>{{ page }} / {{ pages }}</strong>
+		{% if page < pages %}<a href="?/fingerprints&amp;page={{ page + 1 }}">next &raquo;</a>{% endif %}
+	</div>
+	{% endif %}
+	{% endif %}
+</div>

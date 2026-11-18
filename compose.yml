@@ -1,0 +1,169 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: ./docker/nginx/Dockerfile
+    container_name: vichan_web
+    restart: unless-stopped
+    volumes:
+      - ./local-instances/${INSTANCE:-0}/www:/var/www/html
+      - ./docker/nginx/vichan.conf:/etc/nginx/conf.d/default.conf
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./docker/nginx/proxy.conf:/etc/nginx/conf.d/proxy.conf
+      - ./docker/nginx/onion.conf:/etc/nginx/conf.d/onion.conf
+#      - ./docker/nginx/ssl:/etc/nginx/ssl # optional For SSL
+    ports:
+      # Loopback only: Cloudflare reaches the site through the tunnel (web:80 inside Docker), so
+      # nothing on the LAN needs this port, and a LAN host must not be able to forge X-Forwarded-For.
+      - "127.0.0.1:9080:80"
+#      - "9081:443" # optional for SSL
+    depends_on:
+      - db
+      - php
+    links:
+      - php
+    networks:
+      - default
+      - hs
+
+  php:
+    build:
+      context: .
+      dockerfile: ./docker/php/Dockerfile
+    container_name: vichan_php
+    restart: unless-stopped
+    volumes:
+      - ./local-instances/${INSTANCE:-0}/www:/var/www
+      - ./docker/php/www.conf:/usr/local/etc/php-fpm.d/www.conf
+      - ./docker/php/jit.ini:/usr/local/etc/php/conf.d/jit.ini
+      - ./docker/php/php.ini:/usr/local/etc/php/php.ini
+      - mirrors:/mirrors:ro
+    environment:
+      # Database settings
+      VICHAN_MYSQL_HOST: ${VICHAN_MYSQL_HOST}
+      VICHAN_MYSQL_USER: ${VICHAN_MYSQL_USER}
+      VICHAN_MYSQL_NAME: ${VICHAN_MYSQL_NAME}
+      VICHAN_MYSQL_PASSWORD: ${VICHAN_MYSQL_PASSWORD}
+      # Security
+      VICHAN_SECURE_LOGIN_ONLY: ${VICHAN_SECURE_LOGIN_ONLY}
+      # Cache settings
+      VICHAN_CACHE_ENGINE: ${VICHAN_CACHE_ENGINE}
+      VICHAN_CACHE_HOST: ${VICHAN_CACHE_HOST}
+      VICHAN_CACHE_PORT: ${VICHAN_CACHE_PORT}
+      VICHAN_CACHE_PASSWORD: ${VICHAN_CACHE_PASSWORD}
+      # Cookies
+      VICHAN_COOKIES_MOD: ${VICHAN_COOKIES_MOD}
+      # Flood Control
+      VICHAN_FLOOD_TIME: ${VICHAN_FLOOD_TIME}
+      VICHAN_FLOOD_TIME_IP: ${VICHAN_FLOOD_TIME_IP}
+      VICHAN_FLOOD_TIME_SAME: ${VICHAN_FLOOD_TIME_SAME}
+      VICHAN_MAX_BODY: ${VICHAN_MAX_BODY}
+      VICHAN_REPLY_LIMIT: ${VICHAN_REPLY_LIMIT}
+      VICHAN_MAX_LINKS: ${VICHAN_MAX_LINKS}
+      # Images
+      VICHAN_IMAGES_MAX_FILESIZE: ${VICHAN_IMAGES_MAX_FILESIZE}
+      VICHAN_IMAGES_THUMB_WIDTH: ${VICHAN_IMAGES_THUMB_WIDTH}
+      VICHAN_IMAGES_THUMB_HEIGHT: ${VICHAN_IMAGES_THUMB_HEIGHT}
+      VICHAN_IMAGES_MAX_WIDTH: ${VICHAN_IMAGES_MAX_WIDTH}
+      VICHAN_IMAGES_MAX_HEIGHT: ${VICHAN_IMAGES_MAX_HEIGHT}
+      # Display
+      VICHAN_DISPLAY_THREADS_PER_PAGE: ${VICHAN_DISPLAY_THREADS_PER_PAGE}
+      VICHAN_DISPLAY_MAX_PAGES: ${VICHAN_DISPLAY_MAX_PAGES}
+      VICHAN_DISPLAY_THREADS_PREVIEW: ${VICHAN_DISPLAY_THREADS_PREVIEW}
+      # Directories
+      VICHAN_DIRECTORIES_ROOT: ${VICHAN_DIRECTORIES_ROOT}
+      # Cloudflare Turnstile (new-thread captcha)
+      VICHAN_TURNSTILE_SITEKEY: ${VICHAN_TURNSTILE_SITEKEY:-}
+      VICHAN_TURNSTILE_SECRET: ${VICHAN_TURNSTILE_SECRET:-}
+    depends_on:
+      - db
+
+  db:
+    image: mysql:9.7.4
+    # image: mariadb:lts # optional for more higher performance
+    container_name: vichan_db
+    restart: unless-stopped
+    volumes:
+      - ./local-instances/${INSTANCE:-0}/db:/var/lib/mysql
+      # Seed the schema and the schema on first boot (empty db only).
+      - ./install.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      # - ./docker/db/init-admin.sql:/docker-entrypoint-initdb.d/02-admin.sql:ro  # optional: your own first-admin seed (never commit)
+    # ports:
+    #   - "9082:3306" # optional for external access
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+
+  redis:
+    image: redis:8.10.3
+    container_name: vichan_redis
+    restart: unless-stopped
+    volumes:
+      - ./local-instances/${INSTANCE:-0}/redis:/data
+    environment:
+      REDIS_PASSWORD: ${VICHAN_CACHE_PASSWORD}
+    command: redis-server --requirepass ${VICHAN_CACHE_PASSWORD}
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${VICHAN_CACHE_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Cloudflare Tunnel: exposes example.com to the internet without opening
+  # any inbound port on the Debian laptop. Token-based (remote-managed): the
+  # public hostname -> http://web:80 mapping is configured in the Cloudflare
+  # Zero Trust dashboard. Set TUNNEL_TOKEN in your .env.
+  cloudflared:
+    image: cloudflare/cloudflared:2026.10.7
+    container_name: vichan_cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN}
+    depends_on:
+      - web
+
+  # Hidden-service mirrors. Both live on the private "hs" network, which only reaches the
+  # web container (port 8081, see docker/nginx/onion.conf) - never the database or redis,
+  # so a compromise of either daemon cannot pivot into them. Private keys stay in their own
+  # volumes; only the public names go to the shared "mirrors" volume.
+  tor:
+    build:
+      context: .
+      dockerfile: ./docker/tor/Dockerfile
+    container_name: vichan_tor
+    restart: unless-stopped
+    mem_limit: 256m
+    volumes:
+      - tor_data:/var/lib/tor
+      - mirrors:/mirrors
+    networks:
+      - hs
+    depends_on:
+      - web
+
+  i2pd:
+    build:
+      context: .
+      dockerfile: ./docker/i2pd/Dockerfile
+    container_name: vichan_i2pd
+    restart: unless-stopped
+    mem_limit: 384m
+    volumes:
+      - i2pd_data:/var/lib/i2pd
+      - mirrors:/mirrors
+    networks:
+      - hs
+    depends_on:
+      - web
+
+volumes:
+  tor_data:
+  i2pd_data:
+  mirrors:
+
+networks:
+  hs:

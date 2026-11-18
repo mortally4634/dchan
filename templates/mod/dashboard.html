@@ -1,0 +1,297 @@
+<style>.dash-toggle > summary{cursor:pointer;color:#666;margin:2px 0 4px;}</style>
+{% if config.url_banner %}<img class="board_image" src="{{ config.url_banner }}" {% if config.banner_width or config.banner_height %}style="{% if config.banner_width %}width:{{ config.banner_width }}px{% endif %};{% if config.banner_width %}height:{{ config.banner_height }}px{% endif %}" {% endif %}alt="" />{% endif %}
+<fieldset>
+	<legend>{% trans 'Boards' %}</legend>
+
+	<details open class="dash-toggle"><summary title="Click to collapse or expand">{{ boards|length }} boards</summary>
+
+	<ul>
+		{% for board in boards %}
+			<li>
+				<a href="?/{{ config.board_path|sprintf(board.uri) }}{{ config.file_index }}">{{ config.board_abbreviation|sprintf(board.uri) }}</a>
+					 - 
+				{{ board.title|e }}
+				{% if board.subtitle %}
+					<small>&mdash;
+						{% if config.allow_subtitle_html %}
+							{{ board.subtitle }}
+						{% else %}
+							{{ board.subtitle|e }}
+						{% endif %}
+					</small>
+				{% endif %}
+				{% if mod|hasPermission(config.mod.manageboards) %}
+					 <a href="?/edit/{{ board.uri }}"><small>[{% trans 'edit' %}]</small></a>
+				{% endif %}
+				{% if mod|hasPermission(config.mod.edit_pages) %}
+					 <a href="?/edit_pages/{{ board.uri }}"><small>[{% trans 'pages' %}]</small></a>
+				{% endif %}
+				{% if mod|hasPermission(config.mod.cattywipe) %}
+					 <a href="?/{{ board.uri }}/cattywipe" title="Wipe this board (keeps stickied threads)" style="color:#c0392b;"><small>[CattyWipe]</small></a>
+				{% endif %}
+			</li>
+		{% endfor %}
+
+		{# The overboard (ukko theme) isn't a real board, so it isn't in `boards`.
+		   List it like one: the link opens its mod view, [edit] opens the ukko
+		   theme config (name, subtitle, excluded boards, thread count). #}
+		<li>
+			<a href="?/overboard">/o/</a>
+				 -
+			{% trans 'Overboard' %}
+			<small>&mdash; all boards in one</small>
+			{% if mod|hasPermission(config.mod.themes) %}
+				 <a href="?/themes/ukko"><small>[{% trans 'edit' %}]</small></a>
+			{% endif %}
+		</li>
+
+		{% if mod|hasPermission(config.mod.newboard) %}
+			<li style="margin-top:15px"><a href="?/new-board"><strong>{% trans 'Create new board' %}</strong></a></li>
+		{% endif %}
+	</ul>
+	</details>
+</fieldset>
+
+<fieldset>
+	<legend>{% trans 'Messages' %}</legend>
+	<ul>
+		{% if mod|hasPermission(config.mod.noticeboard) %}
+			{% if noticeboard|length > 0 %}
+				<li>
+					{% trans 'Noticeboard' %}:
+					<details open class="dash-toggle"><summary title="Click to collapse or expand">{{ noticeboard|length }} recent posts</summary>
+					<ul>
+						{% for post in noticeboard %}
+							{# Keep spacing on single lines with literal spaces: minify_html
+							   strips tabs/newlines (inc/template.php), so indentation-only
+							   gaps would collapse the words together. #}
+							<li>
+								<a href="?/noticeboard#{{ post.id }}">{% if post.subject %}{{ post.subject|e }}{% else %}<em>{% trans 'no subject' %}</em>{% endif %}</a>
+								<small class="unimportant"> &mdash; by {% if post.username %}{{ post.username|e }}{% else %}<em>deleted?</em>{% endif %} at {{ post.time|date(config.post_date) }}</small>
+							</li>
+						{% endfor %}
+					</ul>
+						</details>
+				</li>
+			{% endif %}
+			<li><a href="?/noticeboard">{% trans 'View all noticeboard entries' %}</a></li>
+		{% endif %}
+		<li><a href="?/edit_news">{% trans 'News' %}</a></li>
+		<li>
+			<a href="?/inbox">
+				{% trans 'PM inbox' %}
+				{% if unread_pms > 0 %}<strong>{%endif %} ({{ unread_pms }} unread){% if unread_pms > 0 %}</strong>{%endif %}
+			</a>
+		</li>
+	</ul>
+</fieldset>
+
+<fieldset>
+	<legend>{% trans 'Administration' %}</legend>
+
+	<ul>
+		{% if mod|hasPermission(config.mod.ppa_approve) %}
+			<li class="ppa-dash">
+				Post Pending approval &middot; <a href="?/pending">pending posts ({{ imgboard_ppa_count() }})</a>
+				{% set ppa_on = [] %}
+				{% for b in boards %}{% if imgboard_ppa_enabled(b.uri) %}{% set ppa_on = ppa_on|merge(['/' ~ b.uri ~ '/']) %}{% endif %}{% endfor %}
+				<br><span class="unimportant">Holding: {% if ppa_on %}{{ ppa_on|join(' ') }}{% else %}no boards{% endif %} &mdash; set this on each board's edit page.</span>
+			</li>
+		{% endif %}
+		{% if mod|hasPermission(config.mod.reports) %}
+			<li>
+				{% if reports > 0 %}<strong>{% endif %}
+					<a href="?/reports">{% trans 'Report queue' %} ({{ reports }})</a>
+				{% if reports > 0 %}</strong>{% endif %}
+			</li>
+		{% endif %}
+		{% if mod|hasPermission(config.mod.approve_files) or mod|hasPermission(config.mod.approve_links) %}
+			{% set pending_total = imgboard_pending_count('files') + imgboard_pending_count('links') %}
+			<li>{% if pending_total > 0 %}<strong>{% endif %}<a href="?/pending">Pending ({{ pending_total }})</a>{% if pending_total > 0 %}</strong>{% endif %}</li>
+		{% endif %}
+		{% if mod|hasPermission(config.mod.approve_mod_requests) %}
+			{% set modreq_total = imgboard_modreq_count() %}
+			<li>{% if modreq_total > 0 %}<strong>{% endif %}<a href="?/mod-requests" title="Mediator delete/ban proposals awaiting review">Mod requests ({{ modreq_total }})</a>{% if modreq_total > 0 %}</strong>{% endif %}</li>
+		{% endif %}
+		{% if mod|hasPermission(config.mod.suggest_blocklists) %}
+			{% set bw_pending = imgboard_blocklist_suggested_count('words') %}
+			{% set bl_pending = imgboard_blocklist_suggested_count('links') %}
+			<li>{% if bw_pending > 0 %}<strong>{% endif %}<a href="?/blocked-words" title="Suggested blocked words awaiting approval">Blocked words{% if bw_pending > 0 %} ({{ bw_pending }}){% endif %}</a>{% if bw_pending > 0 %}</strong>{% endif %}</li>
+			<li>{% if bl_pending > 0 %}<strong>{% endif %}<a href="?/blocked-links" title="Suggested blocked links awaiting approval">Blocked links{% if bl_pending > 0 %} ({{ bl_pending }}){% endif %}</a>{% if bl_pending > 0 %}</strong>{% endif %}</li>
+		{% endif %}
+		{% if mod|hasPermission(config.mod.view_banlist) %}
+			<li><a href="?/bans">{% trans 'Ban list' %}</a></li>
+		{% endif %}
+		{% if mod|hasPermission(config.mod.edit_pages_content) %}
+			<li><a href="?/edit-rules">Edit rules</a></li>
+			<li><a href="?/edit_news">Edit news</a></li>
+		{% endif %}
+		{% if mod|hasPermission(config.mod.edit_board_names) %}
+			<li><a href="?/board-names">Board names</a></li>
+			<li><a href="?/nameroll">Nameroll</a></li>
+		{% endif %}
+		{% if config.ban_appeals and mod|hasPermission(config.mod.view_ban_appeals) %}
+			{% if appeals > 0 %}<strong>{% endif %}
+				<li><a href="?/ban-appeals">{% trans 'Ban appeals' %}</a></li>
+			{% if appeals > 0 %}</strong>{% endif %}
+		{% endif %}
+		{% if mod|hasPermission(config.mod.manageusers) %}
+			<li><a href="?/users">{% trans 'Manage users' %}</a></li>
+		{% elseif mod|hasPermission(config.mod.change_password) %}
+			<li><a href="?/users/{{ mod.id }}">{% trans 'Change password' %}</a></li>
+		{% endif %}
+		{% if mod|hasPermission(config.mod.themes) %}
+			<li><a href="?/themes">{% trans 'Manage themes' %}</a></li>
+		{% endif %}
+		{% if mod|hasPermission(config.mod.modlog) %}
+			<li><a href="?/log">{% trans 'Moderation log' %}</a></li>
+		{% endif %}
+		{% if mod|hasPermission(config.mod.edit_modlog) %}
+			<li><a href="?/modlog-edit">Edit moderation log</a></li>
+		{% endif %}
+		{% if mod|hasPermission(config.mod.edit_topbar) %}
+			<li><a href="?/topbar">Edit top bar</a></li>
+		{% endif %}
+		{% if mod|hasPermission(config.mod.edit_pages) %}
+			<li><a href="?/edit_pages">{% trans 'Global static pages' %}</a></li>
+		{% endif %}
+		{% if mod|hasPermission(config.mod.recent) %}
+			<li><a href="?/recent/25">{% trans 'Recent posts' %}</a></li>
+		{% endif %}
+		{% if mod|hasPermission(config.mod.rebuild) %}
+			<li><a href="?/rebuild">{% trans 'Rebuild' %}</a></li>
+		{% endif %}
+		{% if mod|hasPermission(config.mod.edit_config) %}
+			<li><a href="?/config">{% trans 'Configuration' %}</a></li>
+		{% endif %}
+		{% if mod|hasPermission(config.mod.fp_data) %}
+			<li><a href="?/fingerprints">User fingerprint data{% if fp_count is defined and fp_count is not null %} ({{ fp_count }}){% endif %}</a></li>
+		{% endif %}
+
+	</ul>
+</fieldset>
+
+{% if (mod.real_type|default(mod.type)) >= 5 %}
+	<fieldset>
+		<legend>View as</legend>
+		{% if mod.viewas is defined and mod.viewas %}
+			<p style="color:#b00;font-weight:bold;">You are previewing the site as
+				{{ config.mod.groups[mod.viewas]|default(mod.viewas) }}
+				(your rank: {{ config.mod.groups[mod.real_type]|default(mod.real_type) }}).
+				<a href="?/viewas/off">Exit preview</a></p>
+		{% endif %}
+		<details open class="dash-toggle"><summary title="Click to collapse or expand">Preview the site as a lower rank</summary>
+		<ul>
+			<li><a href="?/viewas/user">See the site as a regular user</a> (signed out: no staff bar, controls or IPs)</li>
+			{% for level, name in config.mod.groups %}
+				{% if level < (mod.real_type|default(mod.type)) and level != 99 %}
+					<li><a href="?/viewas/{{ level }}">See the site as {{ name }}</a></li>
+				{% endif %}
+			{% endfor %}
+		</ul>
+		<p class="unimportant">Preview only lowers what you can see and do; it never grants extra access. Exit to return to your own rank. In the regular-user preview the staff panel is hidden; use the red Exit preview bar at the bottom of any page.</p>
+		</details>
+	</fieldset>
+{% endif %}
+
+{% if mod|hasPermission(config.mod.search) %}
+	<fieldset>
+		<legend>{% trans 'Search' %}</legend>
+
+		<details open class="dash-toggle"><summary title="Click to collapse or expand">Search form</summary>
+
+		<ul>
+			<li>
+				{% include 'mod/search_form.html' %}
+			</li>
+		</ul>
+		</details>
+	</fieldset>
+{%  endif %}
+
+{% if config.mod.dashboard_links and config.mod.dashboard_links|length %}
+	<fieldset>
+		<legend>{% trans 'Other' %}</legend>
+
+		<ul>
+			{% for label,link in config.mod.dashboard_links %}
+				<li><a href="{{ link }}">{{ label }}</a></li>
+			{% endfor %}
+		</ul>
+	</fieldset>
+{% endif %}
+
+{% if config.debug %}
+	<fieldset>
+		<legend>{% trans 'Debug' %}</legend>
+		<ul>
+			<li><a href="?/debug/antispam">{% trans 'Anti-spam' %}</a></li>
+			<li><a href="?/debug/recent">{% trans 'Recent posts' %}</a></li>
+			{% if mod|hasPermission(config.mod.debug_sql) %}
+				<li><a href="?/debug/sql">{% trans 'SQL' %}</a></li>
+			{% endif %}
+		</ul>
+	</fieldset>
+{% endif %}
+
+{% if newer_release %}
+	<fieldset>
+		<legend>Update</legend>
+		<ul>
+			<li>
+				A newer version of vichan
+				(<strong>v{{ newer_release.massive }}.{{ newer_release.major }}.{{ newer_release.minor }}</strong>) is available!
+				See <a href="https://vichan.info">https://vichan.info/</a> for upgrade instructions.
+			</li>
+		</ul>
+	</fieldset>
+{% endif %}
+
+<fieldset>
+	<legend>{% trans 'User account' %}</legend>
+
+	<details open class="dash-toggle"><summary title="Click to collapse or expand">Signed in as {{ mod.username|e }}</summary>
+
+	<ul>
+		<li><a href="?/logout/{{ logout_token }}">{% trans 'Logout' %}</a></li>
+	</ul>
+	</details>
+</fieldset>
+
+{% if mod.type >= 30 %}
+	{% set ks_btn = 'display:inline-block;background:#c0392b;color:#fff;font-weight:bold;font-size:18px;padding:14px 30px;margin:8px;border:2px solid #7b241c;border-radius:5px;text-decoration:none;' %}
+	<fieldset>
+		<legend>Site control</legend>
+		<div style="text-align:center;padding:8px;">
+			<a href="?/temp-jsid" style="{{ ks_btn }}">Temp-JSID</a>
+			{% if mod.type >= config.mod.schizo %}
+				<a href="?/schizo" style="{{ ks_btn }}background:#1f6fd0;border-color:#16508f;">Schizo</a>
+			{% endif %}
+			{% if mod.type >= 40 %}
+				<a href="?/jsid" style="{{ ks_btn }}">JSID</a>
+			{% endif %}
+		</div>
+	</fieldset>
+{% endif %}
+
+<script>
+/* Remember which dashboard sections are collapsed (per browser). No // comments in here:
+   the page minifier deletes newlines, so a // comment would swallow the rest of the script. */
+(function () {
+	var KEY = 'dash_collapsed';
+	var saved = {};
+	try { saved = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { saved = {}; }
+	var all = document.querySelectorAll('details.dash-toggle');
+	Array.prototype.forEach.call(all, function (d) {
+		var fs = d.closest('fieldset');
+		var lg = fs ? fs.querySelector('legend') : null;
+		var pos = fs ? Array.prototype.indexOf.call(fs.querySelectorAll('details.dash-toggle'), d) : 0;
+		var id = ((lg ? lg.textContent : '') + '/' + pos).trim();
+		if (saved[id] === 0) { d.open = false; }
+		d.addEventListener('toggle', function () {
+			saved[id] = d.open ? 1 : 0;
+			try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) {}
+		});
+	});
+})();
+</script>

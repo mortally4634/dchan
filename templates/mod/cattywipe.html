@@ -1,0 +1,18 @@
+<div style="text-align:center; padding:20px; max-width:640px; margin:0 auto;">
+	<h2 style="color:#c0392b;">CattyWipe &mdash; /{{ board }}/</h2>
+
+	<p>This <strong style="color:#c0392b;">permanently</strong> wipes <strong>/{{ board }}/</strong>:</p>
+	<ul style="display:inline-block; text-align:left;">
+		<li>Deletes <strong>every thread on the board</strong> &mdash; OPs, replies and files.</li>
+		<li><strong>Keeps stickied threads</strong> (and their replies) untouched.</li>
+	</ul>
+	<p><strong>There is no undo.</strong></p>
+
+	<form method="post" action="?/{{ board }}/cattywipe"
+	      onsubmit="return confirm('Wipe /{{ board }}/ down to its stickied threads? This cannot be undone.');">
+		<input type="hidden" name="token" value="{{ token }}">
+		<button type="submit" style="background:#c0392b;color:#fff;font-weight:bold;font-size:22px;padding:18px 44px;margin:14px;border:3px solid #922b21;border-radius:6px;cursor:pointer;">
+			CattyWipe /{{ board }}/
+		</button>
+	</form>
+</div>

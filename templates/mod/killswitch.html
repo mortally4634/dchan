@@ -1,0 +1,31 @@
+{% set active = (kind == 'jsid' and mode == 'jsid') or (kind == 'temp' and mode == 'temp') %}
+<div style="text-align:center; padding:20px; max-width:640px; margin:0 auto;">
+	<h2 style="color:#c0392b;">
+		{% if kind == 'jsid' %}JSID &mdash; full shutdown{% else %}Temp-JSID &mdash; temporary shutdown{% endif %}
+	</h2>
+
+	{% if active %}
+		<p>The site is currently <strong style="color:#c0392b;">DOWN</strong>
+		({% if kind == 'jsid' %}JSID{% else %}Temp-JSID{% endif %}){% if by %}, activated by {{ by|e }}{% endif %}.</p>
+		<p>The public sees {% if kind == 'jsid' %}a raw &ldquo;JSID&rdquo; page{% else %}the &ldquo;right back up&rdquo; page with a timer{% endif %}.
+		You can keep working through the <a href="?/dashboard">mod panel</a> as normal.</p>
+	{% elseif mode != 'none' %}
+		<p>The site is down via <strong>{% if mode == 'jsid' %}JSID{% else %}Temp-JSID{% endif %}</strong>
+		(the other switch). Use that control to restore it.</p>
+	{% else %}
+		<p>The site is live.
+		{% if kind == 'jsid' %}
+			Activating JSID takes the whole site down for everyone &mdash; only you (Owner) can bring it back.
+		{% else %}
+			Activating Temp-JSID takes the site down temporarily; any admin can turn it on or off.
+		{% endif %}</p>
+	{% endif %}
+
+	<form method="post" action="?/{% if kind == 'jsid' %}jsid{% else %}temp-jsid{% endif %}"
+	      onsubmit="return confirm('{% if active %}Bring the site back up?{% elseif kind == 'jsid' %}Shut the ENTIRE site down (JSID)? Only Owner can restore it.{% else %}Take the site down temporarily (Temp-JSID)?{% endif %}');">
+		<input type="hidden" name="token" value="{{ token }}">
+		<button type="submit" style="background:#c0392b;color:#fff;font-weight:bold;font-size:22px;padding:18px 44px;margin:14px;border:3px solid #7b241c;border-radius:6px;cursor:pointer;">
+			{% if active %}Restore site{% elseif kind == 'jsid' %}JSID{% else %}Temp-JSID{% endif %}
+		</button>
+	</form>
+</div>

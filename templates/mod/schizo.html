@@ -1,0 +1,23 @@
+<div style="text-align:center; padding:20px; max-width:640px; margin:0 auto;">
+	<h2 style="color:#1f6fd0;">Schizo &mdash; nuclear reset</h2>
+
+	<p>This <strong style="color:#c0392b;">permanently</strong> resets the site:</p>
+	<ul style="display:inline-block; text-align:left;">
+		<li>Deletes <strong>every board except /meta/</strong> &mdash; threads, posts, files and all.</li>
+		<li>Wipes <strong>/meta/</strong> down to only its <strong>stickied + locked</strong> threads (OPs only &mdash; all replies go too); everything else is deleted.</li>
+		<li><strong>Fires all mods</strong> &mdash; every mod account except Owner is deleted.</li>
+	</ul>
+	<p><strong>There is no undo.</strong></p>
+
+	<form method="post" action="?/schizo"
+	      onsubmit="return confirm('Reset the ENTIRE site to /meta/ only and fire all mods? This cannot be undone.');">
+		<input type="hidden" name="token" value="{{ token }}">
+		<p>Type <strong>SCHIZO</strong> to confirm:
+			<input type="text" name="confirm" autocomplete="off" required
+			       style="font-size:18px;padding:6px 10px;border:2px solid #1f6fd0;border-radius:4px;">
+		</p>
+		<button type="submit" style="background:#1f6fd0;color:#fff;font-weight:bold;font-size:22px;padding:18px 44px;margin:14px;border:3px solid #16508f;border-radius:6px;cursor:pointer;">
+			Schizo
+		</button>
+	</form>
+</div>

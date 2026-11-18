@@ -1,0 +1,65 @@
+{% if new %}
+	{% set action = '?/new-board' %}
+{% else %}
+	{% set action = '?/edit/' ~ board.uri %}
+{% endif %}
+
+<form action="{{ action }}" method="post">
+	<input type="hidden" name="token" value="{{ token }}">
+	<table>
+		<tr>
+			<th>{% trans 'URI' %}</th>
+			<td>
+				{% if not new %}
+					{{ config.board_abbreviation|sprintf(board.uri) }}
+				{% else %}
+					/<input size="10" maxlength="255" type="text" name="uri" autocomplete="off">/
+				{% endif %}
+			</td>
+		</tr>
+		<tr>
+			<th>{% trans 'Title' %}</th>
+			<td>
+				<input size="25" type="text" name="title" value="{{ board.title|e }}" autocomplete="off">
+			</td>
+		</tr>
+		<tr>
+			<th>{% trans 'Subtitle' %}</th>
+			<td>
+				<input size="25" type="text" name="subtitle" value="{{ board.subtitle|e }}" autocomplete="off">
+			</td>
+		</tr>
+		{% if mod|hasPermission(config.mod.edit_board_names) %}
+		<tr>
+			<th>Name field</th>
+			<td><label><input type="checkbox" name="opt_name_field" value="1"{% if opts.name_field %} checked{% endif %}> Let posters type a name on this board</label></td>
+		</tr>
+		<tr>
+			<th>Country flags</th>
+			<td><label><input type="checkbox" name="opt_country_flags" value="1"{% if opts.country_flags %} checked{% endif %}> Show a country flag next to names (with [VPN/Proxy], [Tor] or [I2P] where it applies)</label></td>
+		</tr>
+		<tr>
+			<th>Poster IDs</th>
+			<td><label><input type="checkbox" name="opt_poster_ids" value="1"{% if opts.poster_ids %} checked{% endif %}> Show a poster ID on every post</label></td>
+		</tr>
+		{% if mod|hasPermission(config.mod.ppa_toggle) %}
+		<tr>
+			<th>Pending approval</th>
+			<td><input type="hidden" name="opt_ppa_present" value="1"><label><input type="checkbox" name="opt_ppa" value="1"{% if opts.ppa %} checked{% endif %}> Hold new non-staff posts on this board for staff approval (PPA)</label></td>
+		</tr>
+		{% endif %}
+		{% endif %}
+	</table>
+	
+	<ul style="padding:0;text-align:center;list-style:none">
+		{% if new %}
+			<li><input type="submit" value="{% trans 'Create board' %}"></li>
+		{% else %}
+			<li><input type="submit" value="{% trans 'Save changes' %}"></li>
+			{% if mod|hasPermission(config.mod.deleteboard) %}
+				<li><input name="delete" onclick="return confirm('Are you sure you want to permanently delete this board?');" type="submit" value="{% trans 'Delete board' %}"></li>
+			{% endif %}
+		{% endif %}
+	</ul>
+</form>
+

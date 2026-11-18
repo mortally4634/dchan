@@ -1,0 +1,10 @@
+<div class="upgrade-db">
+	<p>Checked every board's posts table for columns this build expects and added any that were missing. Safe to run again anytime.</p>
+	<ul>
+		{% for line in report %}
+			<li>{{ line|e }}</li>
+		{% else %}
+			<li><em>No boards to check.</em></li>
+		{% endfor %}
+	</ul>
+</div>

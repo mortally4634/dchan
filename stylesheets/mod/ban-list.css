@@ -1,0 +1,69 @@
+#banlist {
+  clear: left;
+}
+#banlist th {
+  text-align: center;
+}
+#banlist th, #banlist td {
+  margin: 2px;
+  padding: 2px;
+  overflow: hidden;
+}
+#banlist td:hover {
+  overflow: visible;
+  height: auto !important;
+  background-color: white;
+  color: #000;
+  z-index: 1;
+  position: relative;
+  border: 1px solid black;
+  padding: 1px;
+}
+.banlist-opts {
+}
+.banlist-opts .checkboxes {
+  float: left;
+  width: 50%;
+}
+.banlist-opts .checkboxes label {
+  display: block;
+  color: inherit;
+}
+.banlist-opts .buttons {
+  float: left;
+  width: 50%;
+}
+.banlist-opts .buttons * {
+  display: inline-block;
+  font-size: 12px;
+  vertical-align: middle;
+}
+.banlist-opts .buttons #search {
+  width: 55%;
+  padding: 2px 4px;
+}
+.banlist-opts .buttons #unban {
+  padding: 2px 8px;
+}
+
+tr.tblhead {
+  display: block;
+  box-sizing: border-box;
+  clear: left;
+  width: 100%;
+}
+tr.tblhead > th {
+  display: block;
+  box-sizing: border-box;
+  float: left;
+  padding: 0;
+  color: inherit;
+}
+tr.tblhead > th.sortable {
+  cursor: pointer;
+}
+
+
+body {
+  min-width: 980px;
+}

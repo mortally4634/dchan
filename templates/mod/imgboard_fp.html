@@ -1,0 +1,127 @@
+{% if not found %}
+	<div class="imgboard-fp">
+		<p>No fingerprint on record for <code>{{ hash|e }}</code>.</p>
+		<p class="unimportant">Fingerprints are collected from browsers as they load pages; this hash has not been seen (yet), or predates fingerprinting.</p>
+	</div>
+{% else %}
+<div class="imgboard-fp">
+	<style>
+		.imgboard-fp table { border-collapse: collapse; margin: 6px 0 18px; width: 100%; }
+		.imgboard-fp th, .imgboard-fp td { border: 1px solid #99a; padding: 2px 6px; text-align: left; vertical-align: top; font-size: 11px; }
+		.imgboard-fp th { background: #9988ee; color: #fff; }
+		.imgboard-fp td.k { white-space: nowrap; font-weight: bold; width: 150px; }
+		.imgboard-fp td.v { word-break: break-all; font-family: monospace; }
+		.imgboard-fp h3 { margin: 16px 0 2px; }
+		.fp-trust { font-weight: bold; padding: 1px 8px; border-radius: 3px; color: #fff; }
+		.fp-trust.hi { background: #2e7d32; } .fp-trust.mid { background: #d98200; } .fp-trust.lo { background: #b00; }
+		.fp-lies { color: #b00; }
+		.fp-alt { background: #b00; color: #fff; padding: 8px 12px; border-radius: 4px; margin: 8px 0; font-weight: bold; }
+		.fp-toggle { margin: 2px 0 10px; }
+		.fp-toggle a, .fp-toggle strong { padding: 1px 8px; border: 1px solid #9988ee; border-radius: 3px; text-decoration: none; }
+		.fp-toggle strong { background: #9988ee; color: #fff; }
+		.fp-actions { margin: 2px 0 12px; }
+		.fp-btn { display: inline-block; padding: 3px 10px; margin-right: 6px; border: 1px solid #9988ee; border-radius: 3px; background: #f3f1ff; color: #34345c; cursor: pointer; text-decoration: none; font-size: 12px; }
+		.fp-btn:hover { background: #9988ee; color: #fff; }
+	</style>
+
+	{% if alt %}
+		<div class="fp-alt">&#9888; Likely alt / ban evasion: this one device has posted under
+			{{ cookie_count }} cookie id(s) and {{ ip_count }} IP(s).</div>
+	{% endif %}
+
+	<h2 style="margin-bottom:4px;">Browser fingerprint <code>{{ hash|e }}</code></h2>
+
+	<p class="fp-toggle">View:
+		{% if summary %}<strong>Summary</strong> <a href="?/fp/{{ hash|e }}">Full</a>
+		{% else %}<a href="?/fp/{{ hash|e }}&amp;view=summary">Summary</a> <strong>Full</strong>{% endif %}
+	</p>
+
+	<p class="fp-actions">
+		<button type="button" class="fp-btn" onclick="imgboardCopyReport(this)">Copy to clipboard</button>
+		<a class="fp-btn" href="?/fp/{{ hash|e }}&amp;format=txt" download="fingerprint-{{ hash|e }}.txt">Download .txt</a>
+		<span class="unimportant">({{ can_raw ? 'full report' : 'moderation data only' }} &mdash; exactly what your role may see)</span>
+	</p>
+	<textarea id="fp-report" readonly aria-hidden="true" style="position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;">{{ report_text|e }}</textarea>
+	<script>
+	function imgboardCopyReport(btn){
+		var t=document.getElementById('fp-report'); if(!t){return;}
+		var ok=false;
+		try{ t.focus(); t.select(); ok=document.execCommand('copy'); }catch(e){}
+		try{ if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(t.value); ok=true; } }catch(e){}
+		var o=btn.getAttribute('data-label')||btn.textContent;
+		btn.setAttribute('data-label',o);
+		btn.textContent= ok ? 'Copied!' : 'Press Ctrl+C';
+		setTimeout(function(){ btn.textContent=o; }, 1500);
+	}
+	</script>
+
+	{% if summary %}
+		{# Role-limited digest: only the highlight features this role may see. #}
+		<h3>Highlights <span class="unimportant">({{ can_raw ? 'admin — includes standout device signals' : 'moderation highlights only' }})</span></h3>
+		<table>
+			{% for h in highlights %}
+			<tr><td class="k">{{ h.label|e }}</td><td class="v">{{ h.value|e }}</td></tr>
+			{% endfor %}
+		</table>
+		{% if not can_raw %}
+			<p class="unimportant">The standout raw device signals (platform, GPU, screen, fonts, etc.) are Admin-only. Switch to Full for the complete sighting list.</p>
+		{% endif %}
+	{% else %}
+		<p>
+			Trust:
+			<span class="fp-trust {% if trust >= 80 %}hi{% elseif trust >= 40 %}mid{% else %}lo{% endif %}">{{ trust is null ? '?' : trust }}/100</span>
+			&nbsp;&middot;&nbsp; seen on {{ sightings|length }} IP/cookie combination(s)
+			&nbsp;&middot;&nbsp; last UA: <code>{{ latest.user_agent|e }}</code>
+		</p>
+
+		{% if lies|length %}
+			<p class="fp-lies"><strong>Spoof tells ({{ lies|length }}):</strong> {% for l in lies %}{{ l|e }}{% if not loop.last %} &middot; {% endif %}{% endfor %}</p>
+		{% else %}
+			<p class="unimportant">No spoof tells detected (browser did not appear to be faking any signals).</p>
+		{% endif %}
+
+		<h3>Sightings</h3>
+		<table>
+			<tr><th>Last seen</th><th>First seen</th><th>Hits</th><th>IP</th><th>Network</th><th>Cookie</th><th>HWID</th><th>Trust</th></tr>
+			{% for s in sightings %}
+			<tr>
+				<td>{{ s.last_seen|date('Y-m-d H:i') }}</td>
+				<td>{{ s.first_seen|date('Y-m-d H:i') }}</td>
+				<td>{{ s.hits }}</td>
+				<td>{% if s.ip %}<a href="?/IP/{{ s.ip|e }}">{{ s.ip|e }}</a>{% endif %}</td>
+				<td>{% if s.network == 'Tor' or s.network == 'I2P' or s.network == 'VPN/Proxy' %}<strong>{{ s.network|e }}</strong>{% else %}{{ s.network|e }}{% endif %}</td>
+				<td>{% if s.cookie_id %}<a href="?/search/posts/{{ s.cookie_id|e }}">{{ s.cookie_id[:12]|e }}</a>{% endif %}</td>
+				<td>{% if s.hwid %}<a href="?/search/posts/{{ s.hwid|e }}">{{ s.hwid|e }}</a>{% endif %}</td>
+				<td>{{ s.trust is null ? '?' : s.trust }}</td>
+			</tr>
+			{% endfor %}
+		</table>
+
+		<p>
+			Find posts:
+			<a href="?/search/posts/{{ hash|e }}">by this fingerprint</a>
+			{% for c in cookie_ids %} &middot; <a href="?/search/posts/{{ c|e }}">cookie {{ c[:12]|e }}</a>{% endfor %}
+			{% for h in hwids %} &middot; <a href="?/search/posts/{{ h|e }}">hwid {{ h|e }}</a>{% endfor %}
+		</p>
+
+		<h3>Signal breakdown <span class="unimportant">(raw, un-hashed &mdash; from the most recent sighting)</span></h3>
+		{% if not can_raw %}
+			<p class="unimportant">The raw, un-hashed signal breakdown is Admin-only. You can see the trust score, spoof tells and every sighting above.</p>
+		{% else %}
+			{% for g in groups %}
+				<h4 style="margin:10px 0 0;text-transform:capitalize;">{{ g.name|e }}</h4>
+				<table>
+					{% for it in g.items %}
+					<tr>
+						<td class="k">{{ it.key|e }}</td>
+						<td class="v">{{ it.value|e }}</td>
+					</tr>
+					{% endfor %}
+				</table>
+			{% else %}
+				<p class="unimportant">No stored signal breakdown for this fingerprint.</p>
+			{% endfor %}
+		{% endif %}
+	{% endif %}
+</div>
+{% endif %}

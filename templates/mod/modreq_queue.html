@@ -1,0 +1,42 @@
+<div class="modreq-queue">
+	{% if requests is empty %}
+		<p class="unimportant">No open proposals.</p>
+	{% else %}
+		<p class="unimportant">
+			{{ requests|length }} open proposal{{ requests|length == 1 ? '' : 's' }}.
+			Approving executes the action immediately; denying closes the request.
+		</p>
+
+		{% for r in requests %}
+		<fieldset class="modreq-item" style="margin-bottom:16px;">
+			<legend>
+				<strong>{{ r.action == 'ban' ? 'Ban' : 'Delete' }}</strong>
+				&middot; <code>/{{ r.board }}/ #{{ r.post_id }}</code>
+				&middot; by @{{ r.requested_by|e }}
+				&middot; {{ r.time|date(config.post_date) }}
+			</legend>
+
+			{% if r.reason %}
+				<p><strong>Reason:</strong> {{ r.reason|e }}</p>
+			{% endif %}
+			{% if r.action == 'ban' %}
+				<p><strong>Requested length:</strong> {{ r.duration ? r.duration|e : 'permanent' }}</p>
+			{% endif %}
+
+			<div class="modreq-post" style="margin:8px 0;">{{ r.built }}</div>
+
+			<p class="modreq-actions">
+				{% if r.missing %}
+					<em class="unimportant">The target post no longer exists.</em>
+					<a href="?/mod-requests/deny/{{ r.id }}/{{ r.deny_token }}">[close]</a>
+				{% else %}
+					<a href="?/mod-requests/approve/{{ r.id }}/{{ r.approve_token }}"
+						onclick="return confirm('Approve this {{ r.action }} proposal?');">[approve]</a>
+					&nbsp;
+					<a href="?/mod-requests/deny/{{ r.id }}/{{ r.deny_token }}">[deny]</a>
+				{% endif %}
+			</p>
+		</fieldset>
+		{% endfor %}
+	{% endif %}
+</div>

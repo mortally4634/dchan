@@ -1,0 +1,180 @@
+{#
+	Top bar editor. Chips are dragged by their handle, or moved with the arrow
+	buttons (works on touch too). Each chip can split the bar into a new group,
+	and group breaks can be added/removed freely.
+	IMPORTANT: this page is minified by deleting every newline, so the script
+	below must never use // comments (they would swallow the rest of the script)
+	and every statement must end with a semicolon. Keep paragraphs on one line.
+#}
+<style>
+	#tb-wrap { max-width: 760px; margin: auto; }
+	#tb-list { list-style: none; margin: 10px 0; padding: 0; }
+	.tb-item {
+		display: flex; align-items: center; gap: 8px;
+		padding: 6px 10px; margin: 4px 0;
+		background: #f4f4f4; border: 1px solid #ccc; border-radius: 4px;
+		user-select: none;
+	}
+	.tb-item.dragging { opacity: .35; border-style: dashed; }
+	.tb-item .tb-handle { color: #888; font-size: 16px; cursor: grab; padding: 0 4px; }
+	.tb-item .tb-label { flex: 1; font-weight: bold; }
+	.tb-item .tb-type { font-size: 11px; color: #666; text-transform: uppercase; background: #e2e2e2; border-radius: 3px; padding: 1px 6px; }
+	.tb-item.tb-sep { background: #e9e9ff; border-style: dashed; font-style: italic; }
+	.tb-item.tb-sep .tb-label { font-weight: normal; color: #558; }
+	.tb-item.tb-off { opacity: .5; }
+	.tb-btn { border: 1px solid #bbb; background: #fff; color: #444; border-radius: 3px; cursor: pointer; font-size: 12px; line-height: 1; padding: 3px 7px; }
+	.tb-btn:hover { background: #9988ee; color: #fff; border-color: #9988ee; }
+	.tb-btn.tb-del { border-color: #c99; background: #fff0f0; color: #a33; }
+	.tb-btn.tb-del:hover { background: #a33; color: #fff; }
+	#tb-addbreak { border: 1px dashed #88a; background: #eef; color: #448; border-radius: 4px; cursor: pointer; padding: 5px 12px; margin-right: 10px; }
+	#tb-addbreak:hover { background: #ccd; }
+	#tb-preview { margin: 10px 0; padding: 8px 10px; background: #fff; border: 1px solid #ccc; border-radius: 4px; font-family: monospace; word-break: break-word; min-height: 1.4em; }
+	#tb-preview .tb-modgroup { color: #a05a00; }
+	#tb-saved { color: #060; font-weight: bold; }
+	#tb-nojs { color: #a33; font-weight: bold; }
+</style>
+
+<div id="tb-wrap">
+	{% if saved %}<p id="tb-saved">Saved. The site was rebuilt with the new top bar.</p>{% endif %}
+	<p id="tb-nojs">The editor script did not start, so changes will not save. Hard-refresh the page (Ctrl+Shift+R).</p>
+	<p>Drag a chip by its handle, or use the arrows, to reorder the top bar. Untick a chip to hide it. Use the scissors button on a chip, or "Add group break", to start a new <code>[ ... ]</code> group as many times as you like. The orange group at the end is the staff group; it is shown for reference and is not editable. Saving rebuilds every page.</p>
+
+	<div id="tb-preview" data-mod="{{ mod_preview|e('html_attr') }}">{{ preview|e }}</div>
+
+	<form action="?/topbar" method="post" id="tb-form">
+		<input type="hidden" name="token"  value="{{ token }}">
+		<input type="hidden" name="order"  id="tb-order">
+		<input type="hidden" name="hidden" id="tb-hidden">
+
+		<ul id="tb-list">
+			{% for it in items %}
+				{% if it.type == 'sep' %}
+					<li class="tb-item tb-sep" data-token="sep" data-type="sep" data-label="group break"><span class="tb-handle" title="Drag">&#9776;</span><span class="tb-label">&mdash; group break &mdash;</span><button type="button" class="tb-btn" data-act="up" title="Move up">&#9650;</button><button type="button" class="tb-btn" data-act="down" title="Move down">&#9660;</button><button type="button" class="tb-btn tb-del" data-act="del" title="Remove this group break">&#10005;</button></li>
+				{% else %}
+					<li class="tb-item{% if it.hidden %} tb-off{% endif %}" data-token="{{ it.token }}" data-type="{{ it.type }}" data-label="{{ it.label|e('html_attr') }}"><span class="tb-handle" title="Drag">&#9776;</span><input type="checkbox" class="tb-vis" title="Show in top bar"{% if not it.hidden %} checked{% endif %}><span class="tb-label">{{ it.label }}</span><span class="tb-type">{{ it.type }}</span><button type="button" class="tb-btn" data-act="up" title="Move up">&#9650;</button><button type="button" class="tb-btn" data-act="down" title="Move down">&#9660;</button><button type="button" class="tb-btn" data-act="split" title="Start a new group after this">&#9986;</button></li>
+				{% endif %}
+			{% endfor %}
+		</ul>
+
+		<p><button type="button" id="tb-addbreak">+ Add group break</button> <input type="submit" value="Save top bar"></p>
+	</form>
+</div>
+
+<script>
+(function () {
+	var list = document.getElementById('tb-list');
+	var form = document.getElementById('tb-form');
+	var preview = document.getElementById('tb-preview');
+	var dragEl = null;
+	var fromHandle = false;
+	document.getElementById('tb-nojs').style.display = 'none';
+
+	function items() { return Array.prototype.slice.call(list.querySelectorAll('.tb-item')); }
+
+	function makeSep() {
+		var li = document.createElement('li');
+		li.className = 'tb-item tb-sep';
+		li.setAttribute('data-token', 'sep');
+		li.setAttribute('data-type', 'sep');
+		li.setAttribute('data-label', 'group break');
+		li.innerHTML = '<span class="tb-handle" title="Drag">☰</span><span class="tb-label">— group break —</span>' +
+			'<button type="button" class="tb-btn" data-act="up" title="Move up">▲</button>' +
+			'<button type="button" class="tb-btn" data-act="down" title="Move down">▼</button>' +
+			'<button type="button" class="tb-btn tb-del" data-act="del" title="Remove this group break">✕</button>';
+		return li;
+	}
+
+	function renderPreview() {
+		var groups = [[]];
+		items().forEach(function (el) {
+			if (el.getAttribute('data-type') === 'sep') { groups.push([]); return; }
+			var v = el.querySelector('.tb-vis');
+			if (v && !v.checked) { return; }
+			groups[groups.length - 1].push(el.getAttribute('data-label'));
+		});
+		var out = groups.filter(function (g) { return g.length; })
+			.map(function (g) { return '[ ' + g.join(' / ') + ' ]'; }).join(' ');
+		preview.textContent = (out || '(top bar is empty)') + ' ';
+		var modPart = preview.getAttribute('data-mod') || '';
+		if (modPart) {
+			var span = document.createElement('span');
+			span.className = 'tb-modgroup';
+			span.textContent = modPart;
+			preview.appendChild(span);
+		}
+	}
+
+	list.addEventListener('mousedown', function (e) {
+		fromHandle = !!e.target.closest('.tb-handle');
+		items().forEach(function (li) { li.draggable = false; });
+		if (fromHandle) { e.target.closest('.tb-item').draggable = true; }
+	});
+
+	list.addEventListener('dragstart', function (e) {
+		if (!fromHandle) { e.preventDefault(); return; }
+		dragEl = e.target.closest('.tb-item');
+		if (dragEl) {
+			dragEl.classList.add('dragging');
+			e.dataTransfer.effectAllowed = 'move';
+			e.dataTransfer.setData('text/plain', dragEl.getAttribute('data-token'));
+		}
+	});
+
+	list.addEventListener('dragend', function () {
+		if (dragEl) { dragEl.classList.remove('dragging'); dragEl.draggable = false; }
+		dragEl = null;
+		fromHandle = false;
+		renderPreview();
+	});
+
+	list.addEventListener('dragover', function (e) {
+		e.preventDefault();
+		if (!dragEl) { return; }
+		var next = null;
+		var best = -Infinity;
+		items().forEach(function (el) {
+			if (el === dragEl) { return; }
+			var box = el.getBoundingClientRect();
+			var offset = e.clientY - box.top - box.height / 2;
+			if (offset < 0 && offset > best) { best = offset; next = el; }
+		});
+		if (next === null) { list.appendChild(dragEl); } else { list.insertBefore(dragEl, next); }
+	});
+
+	list.addEventListener('change', function (e) {
+		if (e.target.classList.contains('tb-vis')) {
+			e.target.closest('.tb-item').classList.toggle('tb-off', !e.target.checked);
+			renderPreview();
+		}
+	});
+
+	list.addEventListener('click', function (e) {
+		var btn = e.target.closest('[data-act]');
+		if (!btn) { return; }
+		var li = btn.closest('.tb-item');
+		var act = btn.getAttribute('data-act');
+		if (act === 'up' && li.previousElementSibling) { list.insertBefore(li, li.previousElementSibling); }
+		if (act === 'down' && li.nextElementSibling) { list.insertBefore(li.nextElementSibling, li); }
+		if (act === 'del') { list.removeChild(li); }
+		if (act === 'split') { list.insertBefore(makeSep(), li.nextElementSibling); }
+		renderPreview();
+	});
+
+	document.getElementById('tb-addbreak').addEventListener('click', function () {
+		list.appendChild(makeSep());
+		renderPreview();
+	});
+
+	form.addEventListener('submit', function (e) {
+		var all = items();
+		if (!all.length) { e.preventDefault(); return; }
+		document.getElementById('tb-order').value = JSON.stringify(all.map(function (el) { return el.getAttribute('data-token'); }));
+		document.getElementById('tb-hidden').value = JSON.stringify(all.filter(function (el) {
+			var v = el.querySelector('.tb-vis');
+			return v && !v.checked;
+		}).map(function (el) { return el.getAttribute('data-token'); }));
+	});
+
+	renderPreview();
+})();
+</script>

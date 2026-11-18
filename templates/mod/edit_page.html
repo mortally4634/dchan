@@ -1,0 +1,12 @@
+<div class="edit-page" style="max-width:760px;margin:auto;">
+	<p>Edit the <strong>{{ page_title }}</strong> page. Use the toolbar to format &mdash; it saves as HTML.</p>
+	<form action="?/edit-{{ key }}" method="post">
+		<input type="hidden" name="token" value="{{ token }}">
+		<textarea name="content" class="wysiwyg-html" rows="22" style="width:100%;box-sizing:border-box;font-family:monospace;">{{ content }}</textarea>
+		<p>
+			<input type="submit" value="Save">
+			&nbsp; <a href="{{ view }}">View the {{ page_title }} page</a>
+		</p>
+	</form>
+</div>
+<script type="text/javascript" src="{{ config.additional_javascript_url }}js/mod/visual-editor.js?v={{ config.resource_version }}"></script>

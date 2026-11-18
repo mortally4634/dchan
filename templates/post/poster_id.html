@@ -1,0 +1,16 @@
+{% if config.imgboard_sids %}
+	{# Board-wide permanent Staff ID. For posts made by a mod (as staff) the SID
+	   is their account id — the same number shown in Manage users. For anyone
+	   else it is seeded on the board URI, so it is stable per poster per board. #}
+	{% if post.mod_id %}
+		 <span class="poster_id sid" title="Staff ID">SID: {{ post.mod_id }}</span>
+	{% else %}
+		 <span class="poster_id sid" title="Staff ID">SID: {{ post.ip|poster_id(board.uri) }}</span>
+	{% endif %}
+{% elseif config.poster_ids or post.show_poster_id %}
+	{% if post.thread %}
+		 <span class="poster_id">{{ post.ip|poster_id(post.thread) }}</span>
+	{% else %}
+		 <span class="poster_id">{{ post.ip|poster_id(post.id) }}</span>
+	{% endif %}
+{% endif %}

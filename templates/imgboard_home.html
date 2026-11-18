@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>example.com</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=yes">
+	<meta name="description" content="example.com - an imageboard for Imgboard and Imgboard culture.">
+	{% if config.url_favicon %}<link rel="shortcut icon" href="{{ config.url_favicon }}">{% endif %}
+	<!-- Base theme + the viewer's selected board theme (stored in localStorage by
+	     the style switcher), applied here so the homepage matches whatever theme
+	     they picked on the boards. -->
+	<link rel="stylesheet" media="screen" href="/stylesheets/style.css">
+	<link rel="stylesheet" media="screen" id="stylesheet" href="">
+	<script>
+	(function () {
+		var choices = { {% for name, uri in config.stylesheets %}'{{ name|e('js') }}': '{{ uri ? (config.uri_stylesheets ~ uri) : '' }}'{% if not loop.last %}, {% endif %}{% endfor %} };
+		try {
+			var sel = localStorage.getItem('stylesheet');
+			if (sel && choices[sel]) { document.getElementById('stylesheet').href = choices[sel]; }
+			if (sel) { document.documentElement.className += ' theme-' + sel.toLowerCase().replace(/[^a-z0-9]/g, ''); }
+		} catch (e) {}
+	})();
+	</script>
+	<style>
+		/* Front-page layout modelled on the soyjak.st HomePage theme. */
+		body { text-align: center; }
+		.boardlist { text-align: left; padding: 4px 8px; }
+		.home-logo { text-align: center; margin-top: 10px; }
+		.home-logo img { max-width: 200px; height: auto; }
+		h1.home-title { font-family: tahoma; letter-spacing: -2px; font-size: 28pt; margin: 8px 0 0; color: #AF0A0F; text-align: center; }
+		.home-subtitle { text-align: center; color: inherit; font-size: 9pt; word-break: break-all; margin-bottom: 4px; }
+		.home-subtitle a { color: inherit; }
+		.home-subtitle a:hover { color: #ff0000; }
+
+		.box-wrap table { border-collapse: collapse; width: 100%; }
+		.box-wrap td { border: solid; border-width: 1px 0; border-color: rgba(127,127,127,0.3); }
+		.box-wrap tr:first-child td, .box-wrap tr:nth-child(2) td { border-top: none; }
+		.box-wrap tr:last-child td { border-bottom: none; }
+		.box-wrap tr:has(th) { background: #9988ee; text-align: left; }
+		.box-wrap td, .box-wrap th { padding: 3px 7px; }
+
+		.box-wrap {
+			display: flex; flex-wrap: wrap; align-items: flex-start;
+			max-width: 670px; min-width: 332px; margin: 20px auto;
+			overflow: auto; gap: 5px; padding: 2px; text-align: left;
+		}
+		.box { background: rgba(127,127,127,0.07); color: inherit; border: 1px solid rgba(127,127,127,0.4); width: 330px; margin: 8px 0; padding: 0; }
+		.box ul { padding: 2px 15px; }
+		.box ul li { list-style: none; margin: 0; overflow-wrap: anywhere; word-break: break-word; }
+		.box h2 { padding: 3px 7px; font-size: 12pt; margin: 0; }
+		.box th h2 { padding: 0; }
+		.box.middle h2 { color: #34345C; }
+		/* Purple header bar on the News and About boxes, matching the board table header. */
+		.box.middle > h2 { background: #9988ee; }
+		.box img { float: none; margin: 10px auto; }
+		.box.middle { background: rgba(127,127,127,0.07); color: inherit; border: 1px solid rgba(127,127,127,0.4); width: 100%; }
+		.wrapper { flex-grow: 1; width: 330px; box-sizing: border-box; }
+		.box.left { background: rgba(127,127,127,0.07); color: inherit; border: 1px solid rgba(127,127,127,0.4); }
+		.box.left h2 { background: #9C6; color: #060; }
+		.box.right { background: rgba(127,127,127,0.07); color: inherit; border: 1px solid rgba(127,127,127,0.4); }
+		.box.right h2 { background: #59A; color: #fff; }
+		.theme-dark { --bar: #32DD72; }
+		.theme-photon { --bar: #FF6600; }
+		.theme-tomorrow { --bar: #81a2be; }
+		.theme-yotsuba, .theme-futaba { --bar: #EEAA88; }
+		[class*='theme-'] .box-wrap tr:has(th), [class*='theme-'] .box.middle > h2 { background: var(--bar, #9988ee); color: #000; }
+		[class*='theme-'] .box-wrap tr:has(th) th, [class*='theme-'] .box.middle > h2 { color: #000; }
+		.box.right + .box.right { margin-top: 8px; }
+		.mirror-list li { padding: 3px 0; font-size: 11pt; }
+		.mirror-list a { font-family: monospace; font-size: 9pt; }
+		.recent-thumbs { padding: 6px 8px !important; }
+		.recent-thumbs li { display: inline-block; }
+		.recent-thumbs img { width: 90px; height: 90px; object-fit: cover; margin: 2px; border: 1px solid #98E; }
+
+		@media screen and (max-width: 696px) {
+			.box-wrap { overflow: visible; }
+			.box { width: 100%; }
+			.box ul { text-align: center; }
+			td.desktop, th.desktop { display: none; }
+		}
+	</style>
+</head>
+<body class="8chan vichan">
+	{{ boardlist.top }}
+
+	<h1 class="home-title">example.com</h1>
+
+	<div class="box-wrap">
+		<div class="box middle">
+			<h2>News</h2>
+			<table>
+			{% for n in latest_news %}
+				<tr>
+					<td>{{ n.time|date(config.post_date) }}: <a href="/news.php">{{ n.subject ? n.subject|e : 'News' }}</a></td>
+				</tr>
+			{% else %}
+				<tr><td>No news today.</td></tr>
+			{% endfor %}
+			</table>
+		</div>
+
+		<div class="box middle">
+			<h2>About</h2>
+			<ul style="text-align: center; margin-top: 8px;">
+				<li>Welcome to example.com. Edit this text in templates/imgboard_home.html.</li>
+				<br/>
+				<li>Please read the <a href="/rules.php">rules</a> before posting.</li>
+			</ul>
+		</div>
+
+		<div class="box middle">
+			<table>
+				<tr>
+					<th><h2>Board</h2></th>
+					<th class="desktop"><h2>Subtitle</h2></th>
+					<th><h2 title="Posts in the last hour">PPH</h2></th>
+					<th><h2 title="Posts in the last 24 hours">PPD</h2></th>
+					<th><h2 title="Distinct IPs that have posted">Posters</h2></th>
+					<th class="desktop"><h2>Posts</h2></th>
+				</tr>
+				{% for b in board_table %}
+					<tr>
+						<td><a href="/{{ b.uri }}/">/{{ b.uri }}/ - {{ b.title|e }}</a></td>
+						<td class="desktop">{{ b.subtitle|e }}</td>
+						<td>{{ b.pph }}</td>
+						<td>{{ b.ppd }}</td>
+						<td>{{ b.posters }}</td>
+						<td class="desktop">{{ b.posts }}</td>
+					</tr>
+				{% else %}
+					<tr><td colspan="6">No boards yet.</td></tr>
+				{% endfor %}
+			</table>
+		</div>
+
+		<div class="wrapper">
+			<div class="box left">
+				<h2>Recent Images</h2>
+				<ul class="recent-thumbs">
+					{% for img in recent_images %}
+						<li><a href="{{ img.link }}"><img loading="lazy" src="{{ img.thumb }}" alt=""></a></li>
+					{% else %}
+						<li>No images yet.</li>
+					{% endfor %}
+				</ul>
+			</div>
+			<div class="box left">
+				<h2>Statistics</h2>
+				<ul>
+					<li>Total posts: {{ stats.total_posts }}</li>
+					<li>Unique posters: {{ stats.unique_posters }}</li>
+					<li>Boards: {{ stats.boards }}</li>
+					<li>Active content: {{ stats.content_size_human }}</li>
+					<li>Estimated total content: ~{{ stats.total_content_size_human }}</li>
+				</ul>
+			</div>
+		</div>
+
+		<div class="wrapper">
+			<div class="box right">
+				<h2>Latest Posts</h2>
+				<ul>
+					{% for p in recent_posts %}
+						<li><strong>/{{ p.board }}/</strong>: <a href="{{ p.link }}">{{ p.snippet ? p.snippet : '(no comment)' }}</a></li>
+					{% else %}
+						<li>No posts yet.</li>
+					{% endfor %}
+				</ul>
+			</div>
+			{% if mirrors %}
+			<div class="box right">
+				<h2>Hidden Service Mirrors</h2>
+				<ul class="mirror-list">
+					{% for name, host in mirrors %}
+						<li><strong>{{ name }}</strong><br><a href="http://{{ host }}/">http://{{ host }}/</a></li>
+					{% endfor %}
+					<li class="unimportant">Mirrors run without JavaScript.</li>
+				</ul>
+			</div>
+			{% endif %}
+		</div>
+	</div>
+
+	<hr/>
+	{% include 'footer.html' %}
+	<script type="text/javascript">
+		var configRoot = "{{ config.root }}";
+		var active_page = "page";
+		var board_name = "";
+		var inMod = {% if is_admin %}true{% else %}false{% endif %};
+		var modRoot = "{{ config.root }}" + (inMod ? "mod.php?/" : "");
+	</script>
+	<script type="text/javascript" src="{{ config.url_javascript }}?v={{ config.resource_version }}"></script>
+	{% if not config.additional_javascript_compile %}
+	{% for javascript in config.additional_javascript %}<script type="text/javascript" src="{{ config.additional_javascript_url }}{{ javascript }}?v={{ config.resource_version }}"></script>{% endfor %}
+	{% endif %}
+	<script type="text/javascript" src="/js/dteg/dteg-collect.js"></script>
+	<script type="text/javascript" src="/js/dteg/dteg-detect.js"></script>
+	<script type="text/javascript" src="/js/dteg/dteg-behavior.js"></script>
+	<script type="text/javascript" src="/js/imgboard-viewas.js"></script>
+</body>
+</html>

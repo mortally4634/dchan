@@ -1,0 +1,52 @@
+<div class="blocklist">
+	<p>
+		{% if type == 'words' %}
+			Posts containing an <strong>active</strong> blocked word are rejected.
+		{% else %}
+			Posts containing an <strong>active</strong> blocked link are rejected.
+		{% endif %}
+		{% if can_edit %}
+			One entry per line &mdash; edit the list and press <strong>Save</strong>.
+		{% elseif can_suggest %}
+			You can suggest entries for a moderator to approve.
+		{% endif %}
+	</p>
+
+	{% if can_edit %}
+		<form action="?/blocked-{{ type }}" method="post">
+			<input type="hidden" name="token" value="{{ token }}">
+			<textarea name="content" class="code-lines" rows="14" spellcheck="false" placeholder="{{ type == 'words' ? 'one word or phrase per line' : 'one link / domain per line' }}">{{ active_text }}</textarea>
+			<p><input type="submit" value="Save"></p>
+		</form>
+	{% else %}
+		<textarea class="code-lines" rows="14" readonly>{{ active_text }}</textarea>
+		{% if can_suggest %}
+			<form action="?/blocked-{{ type }}" method="post" style="margin-top:10px;">
+				<input type="hidden" name="token" value="{{ token }}">
+				<input type="text" name="value" size="40" placeholder="{{ type == 'words' ? 'suggest a word or phrase' : 'suggest a link / domain' }}" required>
+				<input type="submit" value="Suggest">
+			</form>
+		{% endif %}
+	{% endif %}
+
+	{% if suggested is not empty %}
+		<fieldset class="blocklist-suggested" style="margin-top:16px;">
+			<legend>Suggested</legend>
+			<ul>
+				{% for it in suggested %}
+					<li>
+						<code>{{ it.value|e }}</code>
+						{% if it.added_by %}<span class="bl-by">&mdash; @{{ it.added_by|e }}</span>{% endif %}
+						{% if can_edit %}
+							<span class="bl-actions">
+								<a href="?/blocked-{{ type }}/approve/{{ it.id }}/{{ it.approve_token }}">[approve]</a>
+								<a href="?/blocked-{{ type }}/delete/{{ it.id }}/{{ it.delete_token }}">[dismiss]</a>
+							</span>
+						{% endif %}
+					</li>
+				{% endfor %}
+			</ul>
+		</fieldset>
+	{% endif %}
+</div>
+<script type="text/javascript" src="{{ config.additional_javascript_url }}js/mod/code-textarea.js?v={{ config.resource_version }}"></script>

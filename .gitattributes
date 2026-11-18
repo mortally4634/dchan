@@ -1,0 +1,5 @@
+# Keep shell scripts and SQL as LF so containers built from a Windows
+# checkout don't get CRLF shebangs / line endings.
+*.sh    text eol=lf
+*.sql   text eol=lf
+docker/php/bootstrap.sh text eol=lf

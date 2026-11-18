@@ -1,0 +1,43 @@
+<div class="board-names">
+	{% if saved %}<p style="color:#070;"><strong>Saved.</strong> Boards were rebuilt to reflect the new settings.</p>{% endif %}
+
+	<p>
+		Boards are forced-anonymous by default (no name field), and posters show as
+		<strong>{{ default_anon }}</strong>. Per board you can show the name field,
+		set a different default name, and turn on country flags or Poster IDs for
+		every post on that board.
+	</p>
+
+	<form action="?/board-names" method="post">
+		<input type="hidden" name="token" value="{{ token }}">
+		<input type="hidden" name="save" value="1">
+		<table class="modlog" style="width:100%;">
+			<tr>
+				<th>Board</th>
+				<th>Show name field</th>
+				<th>Default name (blank = {{ default_anon }})</th>
+				<th>Country flags</th>
+				<th>Poster IDs</th>
+			</tr>
+			{% for b in boards %}
+				<tr>
+					<td>/{{ b.uri }}/ &mdash; {{ b.title|e }}</td>
+					<td style="text-align:center;">
+						<input type="checkbox" name="name_field_{{ b.uri }}" value="1"{% if b.name_field %} checked{% endif %}>
+					</td>
+					<td>
+						<input type="text" name="anon_name_{{ b.uri }}" value="{{ b.anon_name|e }}" size="25" maxlength="35" placeholder="{{ default_anon }}">
+					</td>
+					<td style="text-align:center;">
+						<input type="checkbox" name="country_flags_{{ b.uri }}" value="1"{% if b.country_flags %} checked{% endif %}>
+					</td>
+					<td style="text-align:center;">
+						<input type="checkbox" name="poster_ids_{{ b.uri }}" value="1"{% if b.poster_ids %} checked{% endif %}>
+					</td>
+				</tr>
+			{% endfor %}
+		</table>
+		{% if boards|length == 0 %}<p><em>No boards yet.</em></p>{% endif %}
+		<p><input type="submit" value="Save"></p>
+	</form>
+</div>

@@ -1,0 +1,26 @@
+<div class="nameroll" style="max-width:640px;margin:auto;">
+	{% if saved %}<p style="color:#070;"><strong>Saved.</strong> {{ count }} name{{ count == 1 ? '' : 's' }} in the roll.</p>{% endif %}
+
+	<p>
+		A <strong>nameroll</strong> gives each anonymous post a random name from this list.
+		It applies to public boards that have <em>no name field</em> (see
+		<a href="?/board-names">Board names</a>). A post that contains a
+		<code>&gt;</code> anywhere in its text is <strong>not</strong> rolled and keeps the
+		board's normal default name. Staff posts and staff boards are never rolled. Leave the
+		list empty to turn the nameroll off.
+	</p>
+
+	<form action="?/nameroll" method="post">
+		<input type="hidden" name="token" value="{{ token }}">
+		<input type="hidden" name="save" value="1">
+		<p>
+			<label for="nr-names"><strong>Names, one per line</strong></label><br>
+			<textarea id="nr-names" name="names" rows="14" style="width:100%;box-sizing:border-box;" placeholder="Anonymous&#10;Anon2&#10;...">{{ names|e }}</textarea>
+		</p>
+		<p class="unimportant">
+			Blank lines and repeats are dropped. Each name is cut to {{ max_len }} characters, and a
+			<code>#</code> is removed (it would make a tripcode). At most {{ max_entries }} names.
+		</p>
+		<p><input type="submit" value="Save"></p>
+	</form>
+</div>
