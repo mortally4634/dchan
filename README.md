@@ -145,4 +145,15 @@ New sensitive features should pick an explicit level in `inc/instance-config.php
 
 Deploy and backup scripts, secrets, branding images, banners.
 Licenses: `LICENSE.md`, `LICENSE.Tinyboard.md`.
-"# dchan" 
+
+## Credits
+
+Built on the work of:
+
+- **Tinyboard** 0.9.6 — Copyright © 2010-2014 Tinyboard Development Group.
+  <https://github.com/savetheinternet/Tinyboard>
+- **vichan** — Copyright © 2012-2025 vichan-devel. <https://github.com/vichan-devel/vichan>
+- **dchan** 1.0 — this fork. <https://github.com/mortally4634/dchan>
+
+Licenses: [LICENSE.md](LICENSE.md) covers dchan; [LICENSE.Tinyboard.md](LICENSE.Tinyboard.md) covers the
+Tinyboard and vichan code this fork is built on.
