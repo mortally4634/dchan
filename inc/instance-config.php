@@ -168,6 +168,11 @@
 	// /test/ is a staff scratch board for posting test content.
 	$config['imgboard_staff_boards'] = [ 'j', 'test' ];
 
+	// Software versions shown in the footer. vichan's own version comes from the
+	// .installed file (config.version); set the Tinyboard base and dchan versions here.
+	$config['imgboard_tinyboard_version'] = '0.9.6';
+	$config['imgboard_dchan_version']     = '1.0';
+
 	// Country flags: use the individual PNG files in static/flags/ (all present)
 	// rather than the condensed CSS sprite, so flags render without extra setup.
 	// The country code itself comes from Cloudflare's CF-IPCountry header (post.php).
