@@ -2446,6 +2446,31 @@ function imgboard_require_strong_password(string $pw): void {
  * ----------------------------------------------------------------------- */
 
 // Turn a decoded component value into a readable one-line string for staff.
+// Human-readable title for a raw signal group (the component keys DTEG sends), so the
+// breakdown reads in plain language. The raw code name is shown alongside for cross-ref.
+function imgboard_fp_group_label(string $name): string {
+	static $map = [
+		'nav' => 'Navigator / browser', 'uaData' => 'Client hints (low-entropy)',
+		'clientHints' => 'Client hints (high-entropy)', 'screen' => 'Screen & window',
+		'locale' => 'Language & locale', 'math' => 'Math engine quirks',
+		'errors' => 'Error / engine formatting', 'canvas' => 'Canvas 2D',
+		'webgl' => 'Graphics (WebGL)', 'webgl2' => 'Graphics (WebGL 2)', 'webgpu' => 'Graphics (WebGPU)',
+		'fonts' => 'Installed fonts', 'cssMedia' => 'CSS media features',
+		'cssFeatures' => 'CSS feature support', 'domRect' => 'Layout geometry',
+		'misc' => 'Misc capabilities', 'integrity' => 'Anti-tamper checks',
+		'integrityMs' => 'Anti-tamper timing (ms)', 'audio' => 'Audio stack',
+		'voices' => 'Speech voices', 'incognito' => 'Private-browsing check',
+		'behavior' => 'Input behaviour (bot check)', 'collectMs' => 'Collection time (ms)',
+		'headless' => 'Headless / automation', 'permissions' => 'Permission coherence',
+		'cpu' => 'CPU benchmark', 'props' => 'Window / navigator properties',
+		'webrtc' => 'WebRTC / IP discovery', 'extensions' => 'Detected extensions',
+		'battery' => 'Battery', 'mediaDevices' => 'Media devices',
+		'keyboard' => 'Keyboard layout', 'network' => 'Network connection',
+		'storage' => 'Storage estimate',
+	];
+	return $map[$name] ?? $name;
+}
+
 function imgboard_fp_flatten($value): string {
 	if (is_bool($value)) return $value ? 'true' : 'false';
 	if (is_null($value)) return '(null)';
@@ -2579,7 +2604,7 @@ function mod_imgboard_fp_view(Context $ctx, $hash) {
 			} else {
 				$items[] = ['key' => '', 'value' => imgboard_fp_flatten($vals)];
 			}
-			$groups[] = ['name' => (string)$group, 'items' => $items];
+			$groups[] = ['name' => imgboard_fp_group_label((string)$group), 'code' => (string)$group, 'items' => $items];
 		}
 	}
 
@@ -2673,6 +2698,7 @@ function mod_imgboard_fp_view(Context $ctx, $hash) {
 		'summary'      => $summary,
 		'highlights'   => $highlights,
 		'report_text'  => $report_text,
+		'fp_label'     => imgboard_setting_get('fp_label', 'DTEG'),
 	], $mod);
 }
 
@@ -2763,18 +2789,20 @@ function imgboard_fp_report_text(string $hash, bool $can_raw, string $role_name)
 			$items = [];
 			if (is_array($vals)) { foreach ($vals as $k => $v) $items[] = ['key' => (string)$k, 'value' => imgboard_fp_flatten($v)]; }
 			else { $items[] = ['key' => '', 'value' => imgboard_fp_flatten($vals)]; }
-			$groups[] = ['name' => (string)$group, 'items' => $items];
+			$groups[] = ['name' => imgboard_fp_group_label((string)$group), 'code' => (string)$group, 'items' => $items];
 		}
 	}
 
 	$L = []; $sep = str_repeat('=', 64);
 	$L[] = $sep;
-	$L[] = ' example.com - browser fingerprint report';
+	$L[] = ' ' . imgboard_setting_get('fp_label', 'DTEG') . ' - browser fingerprint report';
 	$L[] = $sep;
 	$L[] = sprintf('%-15s: %s', 'Fingerprint', $hash);
 	$L[] = sprintf('%-15s: %s', 'Generated', gmdate('Y-m-d H:i') . ' UTC');
 	$L[] = sprintf('%-15s: %s', 'Viewer role', $role_name);
 	$L[] = sprintf('%-15s: %s', 'Scope', $can_raw ? 'full (raw device signals included)' : 'bare-bones (moderation data only)');
+	$L[] = '';
+	$L[] = 'Legend  Trust: 0-100, higher = fewer spoofing tells.  Network: Tor / I2P / VPN/Proxy / clear / unknown.';
 	$L[] = '';
 	$L[] = '--- Summary ' . str_repeat('-', 52);
 	foreach ($highlights as $h) { $L[] = sprintf('%-17s: %s', $h['label'], $h['value']); }
@@ -2805,7 +2833,7 @@ function imgboard_fp_report_text(string $hash, bool $can_raw, string $role_name)
 	if ($can_raw) {
 		$L[] = ''; $L[] = '--- Raw signal breakdown ' . str_repeat('-', 39);
 		foreach ($groups as $grp) {
-			$L[] = '[' . $grp['name'] . ']';
+			$L[] = '[ ' . $grp['name'] . ' ]  (' . $grp['code'] . ')';
 			foreach ($grp['items'] as $it) { $L[] = sprintf('  %-18s: %s', ($it['key'] !== '' ? $it['key'] : '(value)'), $it['value']); }
 		}
 	} else {
@@ -2864,6 +2892,17 @@ function mod_imgboard_fp_list(Context $ctx) {
 	global $mod;
 	$config = $ctx->get('config');
 	if (!hasPermission($config['mod']['fp_data'])) error($config['error']['noaccess']);
+
+	// Editable label for the fingerprinting system (shown in the viewer, the .txt
+	// reports and the zip). Default "DTEG".
+	if (isset($_POST['fp_label'])) {
+		$label = mb_substr(trim(preg_replace('/[\x00-\x1f\x7f]+/u', '', (string)$_POST['fp_label'])), 0, 40);
+		imgboard_setting_set('fp_label', $label !== '' ? $label : 'DTEG');
+		modLog('Changed the fingerprinting label');
+		header('Location: ?/fingerprints', true, $config['redirect_http']);
+		return;
+	}
+
 	$not_staff = imgboard_staff_fp_where();
 
 	$per  = 100;
@@ -2905,6 +2944,8 @@ function mod_imgboard_fp_list(Context $ctx) {
 		'page'     => $page,
 		'pages'    => $pages,
 		'per'      => $per,
+		'fp_label' => imgboard_setting_get('fp_label', 'DTEG'),
+		'token'    => make_secure_link_token('fingerprints'),
 	], $mod);
 }
 
@@ -2938,7 +2979,7 @@ function mod_imgboard_fp_zip(Context $ctx) {
 		}
 	}
 	$zip->addFromString('README.txt',
-		"example.com user fingerprint export\n" .
+		imgboard_setting_get('fp_label', 'DTEG') . " user fingerprint export\n" .
 		"Generated: " . gmdate('Y-m-d H:i') . " UTC by " . $role_name . "\n" .
 		"Visitors:  " . $count . "\n" .
 		"One .txt per device fingerprint (stable_hash) — posters and lurkers alike.\n");

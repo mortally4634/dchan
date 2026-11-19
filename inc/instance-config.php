@@ -132,7 +132,7 @@
 	// fingerprint/hwid/cookie/IP, plus a .zip of per-visitor .txt files. The
 	// zip route is registered before the list so it is matched first. Manager+.
 	$config['mod']['custom_pages']['/fingerprints/zip']                    = 'imgboard_fp_zip';
-	$config['mod']['custom_pages']['/fingerprints']                        = 'imgboard_fp_list';
+	$config['mod']['custom_pages']['/fingerprints']                        = 'secure_POST imgboard_fp_list';
 
 	// "View as a lower role": preview the site as a rank below your own, or exit.
 	$config['mod']['custom_pages']['/viewas/(off|user|\d+)']                    = 'imgboard_viewas';
@@ -170,8 +170,9 @@
 
 	// Software versions shown in the footer. vichan's own version comes from the
 	// .installed file (config.version); set the Tinyboard base and dchan versions here.
+	// Bump the dchan patch number (1.0.X) by one for every change to the software.
 	$config['imgboard_tinyboard_version'] = '0.9.6';
-	$config['imgboard_dchan_version']     = '1.0';
+	$config['imgboard_dchan_version']     = '1.0.5';
 
 	// Country flags: use the individual PNG files in static/flags/ (all present)
 	// rather than the condensed CSS sprite, so flags render without extra setup.

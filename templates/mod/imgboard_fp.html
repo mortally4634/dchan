@@ -29,7 +29,7 @@
 			{{ cookie_count }} cookie id(s) and {{ ip_count }} IP(s).</div>
 	{% endif %}
 
-	<h2 style="margin-bottom:4px;">Browser fingerprint <code>{{ hash|e }}</code></h2>
+	<h2 style="margin-bottom:4px;">{{ fp_label|default('DTEG')|e }} &middot; Browser fingerprint <code>{{ hash|e }}</code></h2>
 
 	<p class="fp-toggle">View:
 		{% if summary %}<strong>Summary</strong> <a href="?/fp/{{ hash|e }}">Full</a>
@@ -70,6 +70,7 @@
 		<p>
 			Trust:
 			<span class="fp-trust {% if trust >= 80 %}hi{% elseif trust >= 40 %}mid{% else %}lo{% endif %}">{{ trust is null ? '?' : trust }}/100</span>
+			<span class="unimportant">(higher = fewer spoof tells)</span>
 			&nbsp;&middot;&nbsp; seen on {{ sightings|length }} IP/cookie combination(s)
 			&nbsp;&middot;&nbsp; last UA: <code>{{ latest.user_agent|e }}</code>
 		</p>
@@ -96,6 +97,7 @@
 			</tr>
 			{% endfor %}
 		</table>
+		<p class="unimportant">Network: <strong>Tor</strong> / <strong>I2P</strong> / <strong>VPN/Proxy</strong> are flagged connections; <em>clear</em> = ordinary connection; <em>unknown</em> = not checked. Trust is 0&ndash;100 (higher = fewer spoof tells).</p>
 
 		<p>
 			Find posts:
@@ -109,7 +111,7 @@
 			<p class="unimportant">The raw, un-hashed signal breakdown is Admin-only. You can see the trust score, spoof tells and every sighting above.</p>
 		{% else %}
 			{% for g in groups %}
-				<h4 style="margin:10px 0 0;text-transform:capitalize;">{{ g.name|e }}</h4>
+				<h4 style="margin:12px 0 2px;">{{ g.name|e }} <span class="unimportant" style="font-weight:normal;font-size:11px;">{{ g.code|e }}</span></h4>
 				<table>
 					{% for it in g.items %}
 					<tr>

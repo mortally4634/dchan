@@ -11,6 +11,15 @@
 		.imgboard-fp-list .pager strong { background: #9988ee; color: #fff; }
 	</style>
 
+	<form method="post" action="?/fingerprints" style="margin:0 0 10px;">
+		<label>Fingerprinting label:
+			<input type="text" name="fp_label" value="{{ fp_label|default('DTEG')|e }}" maxlength="40" style="width:150px;">
+		</label>
+		<input type="hidden" name="token" value="{{ token|e }}">
+		<button type="submit" class="fp-btn">Save</button>
+		<span class="muted">Shown on the fingerprint viewer, the .txt reports and the zip. Default: DTEG.</span>
+	</form>
+
 	<p>
 		<a class="fp-btn" href="?/fingerprints/zip">&#8681; Download all ({{ total }}) as .zip</a>
 		<span class="muted">Every visitor the fingerprint store has seen &mdash; posters and lurkers alike. One device (fingerprint) per row.</span>
