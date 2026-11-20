@@ -165,7 +165,7 @@
 			<li><a href="?/config">{% trans 'Configuration' %}</a></li>
 		{% endif %}
 		{% if mod|hasPermission(config.mod.fp_data) %}
-			<li><a href="?/fingerprints">User fingerprint data{% if fp_count is defined and fp_count is not null %} ({{ fp_count }}){% endif %}</a></li>
+			<li><a href="?/fingerprints">User fingerprint data{% if fp_count is defined and fp_count is not null %} ({{ fp_count }}){% endif %}</a> <span class="unimportant">(staff devices/IPs/cookies excluded)</span></li>
 		{% endif %}
 
 	</ul>
