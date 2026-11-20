@@ -31,6 +31,7 @@ if (!is_array($data)) {
 }
 
 require 'inc/bootstrap.php';
+require_once 'inc/mod/auth.php'; // mkhash() for the staff-session check below
 
 try {
 	$hex = function ($v, $max) {
@@ -86,6 +87,26 @@ try {
 		exit;
 	}
 
+	// Is this page load from a logged-in staff member? If so, still record the sighting
+	// (so admins can view it at ?/fp/<hash>), but also stamp the staff member's
+	// identifiers into imgboard_staff_fp so they are excluded from the user fingerprint
+	// list / .zip / .txt — including staff who only lurk and never post. Validate the mod
+	// cookie directly (mkhash); check_login() has side effects (destroyCookies/exit)
+	// unsuitable for this silent sink.
+	$is_staff = false;
+	$base = $config['cookies']['mod'];
+	foreach ([$base, '__Secure-' . $base, '__Host-' . $base] as $cn) {
+		if (empty($_COOKIE[$cn])) { continue; }
+		$parts = explode(':', $_COOKIE[$cn]);
+		if (count($parts) !== 3) { continue; }
+		$mq = prepare("SELECT `password` FROM ``mods`` WHERE `username` = :u");
+		$mq->bindValue(':u', $parts[0]);
+		if ($mq->execute() && ($mu = $mq->fetch(PDO::FETCH_ASSOC)) && $parts[1] === mkhash($parts[0], $mu['password'], $parts[2])) {
+			$is_staff = true;
+			break;
+		}
+	}
+
 	$q = prepare("INSERT INTO ``imgboard_fp``
 		(`fp_hash`, `stable_hash`, `cookie_id`, `hwid`, `ip`, `trust`, `lies`, `components`, `user_agent`, `first_seen`, `last_seen`, `hits`)
 		VALUES (:fp, :stable, :cookie, :hwid, :ip, :trust, :lies, :components, :ua, :now, :now, 1)
@@ -116,6 +137,25 @@ try {
 	$q->bindValue(':ua2', $ua);
 	$q->bindValue(':now2', $now, PDO::PARAM_INT);
 	$q->execute();
+
+	if ($is_staff) {
+		imgboard_ddl_once("CREATE TABLE IF NOT EXISTS ``imgboard_staff_fp`` (
+			`stable_hash` varchar(32) CHARACTER SET ascii NOT NULL DEFAULT '',
+			`cookie_id` varchar(64) CHARACTER SET ascii NOT NULL DEFAULT '',
+			`ip` varchar(45) CHARACTER SET ascii NOT NULL DEFAULT '',
+			`time` int(11) NOT NULL,
+			UNIQUE KEY `ident` (`stable_hash`,`cookie_id`,`ip`),
+			KEY `k_cookie` (`cookie_id`), KEY `k_ip` (`ip`), KEY `k_stable` (`stable_hash`)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+		$s = prepare("INSERT INTO ``imgboard_staff_fp`` (`stable_hash`,`cookie_id`,`ip`,`time`)
+			VALUES (:s,:c,:i,:t) ON DUPLICATE KEY UPDATE `time` = :t2");
+		$s->bindValue(':s', $stable_hash);
+		$s->bindValue(':c', $cookie_id);
+		$s->bindValue(':i', $ip);
+		$s->bindValue(':t', $now, PDO::PARAM_INT);
+		$s->bindValue(':t2', $now, PDO::PARAM_INT);
+		$s->execute();
+	}
 } catch (Exception $e) {
 	// Never leak anything to an unauthenticated poster.
 }

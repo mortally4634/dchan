@@ -132,10 +132,10 @@ $config['mod']['custom_pages']['/modlog-edit'] = 'secure_POST modlog_edit';
 $config['mod']['edit_topbar'] = 30;  // Admins only
 $config['mod']['custom_pages']['/topbar'] = 'secure_POST topbar_edit';
 
-// Overboard in mod mode: ?/o renders the ukko overboard with per-post
-// moderation controls (delete/ban/etc.), like a board index mod view. Note: no
-// trailing slash — ?/o/ would be caught by the built-in /(board)/ route first
-// (which runs before custom pages) and error with "Invalid board!".
+// Overboard in mod mode: ?/o renders the ukko overboard with per-post moderation
+// controls (delete/ban/etc.), like a board index mod view. Registered without a trailing
+// slash; the ?/o/ form is normalised to ?/o in mod.php so both work (otherwise the
+// built-in /(board)/ route would treat "o" as a board and error "Invalid board!").
 $config['mod']['custom_pages']['/o'] = 'overboard';
 
 // Schizo: nuclear reset. Deletes every board except /meta/ and fires all mods
@@ -486,7 +486,7 @@ function imgboard_topbar_catalog(string $root, $mod = false): array {
 	// where a bare "?/news" would resolve to "/?/news"). Non-mods get the public
 	// pages.
 	$modp = $root . $config['file_mod'];   // e.g. /mod.php
-	$overboard_href = $mod ? $modp . '?/o'     : $root . 'o/';
+	$overboard_href = $mod ? $modp . '?/o/'    : $root . 'o/';
 	$rules_href     = $mod ? $modp . '?/rules' : $root . 'rules.php';
 	$news_href      = $mod ? $modp . '?/news'  : $root . 'news.php';
 	$bans_href      = $mod ? $modp . '?/bans'  : $root . 'bans.html';
@@ -2847,12 +2847,23 @@ function imgboard_fp_report_text(string $hash, bool $can_raw, string $role_name)
 // zip) never includes a staff member's own device, IP or cookie. Staff IPs come from the
 // mod log (every staff action logs the real IP); staff cookie ids / fingerprints come from
 // their own posts (mod_id set; the stored fp_hash is the stable device hash). Cached per request.
-// shortcut: links staff only via the mod log + their posts; a staff member who only lurks
-//           (never logged in, never posted) is not identifiable and would still appear.
+// Sources: fp.php stamps every logged-in staff member's device/cookie/IP into
+// imgboard_staff_fp on any page load (so even staff who only lurk are caught); plus staff
+// IPs from the mod log and staff cookie ids / device hashes from their own posts (mod_id).
+// A staff member browsing fully logged out is anonymous and cannot be told apart.
 function imgboard_staff_fp_exclusions(): array {
 	static $cache = null;
 	if ($cache !== null) return $cache;
 	$ips = []; $cookies = []; $fps = [];
+	try {
+		if ($q = query("SELECT `ip`, `cookie_id`, `stable_hash` FROM ``imgboard_staff_fp``")) {
+			while ($r = $q->fetch(PDO::FETCH_ASSOC)) {
+				if (!empty($r['ip']))         $ips[$r['ip']] = true;
+				if (!empty($r['cookie_id']))  $cookies[$r['cookie_id']] = true;
+				if (!empty($r['stable_hash'])) $fps[$r['stable_hash']] = true;
+			}
+		}
+	} catch (\Throwable $e) {}
 	try {
 		if ($q = query("SELECT DISTINCT `ip` FROM ``modlogs`` WHERE `ip` IS NOT NULL AND `ip` <> ''")) {
 			foreach ($q->fetchAll(PDO::FETCH_COLUMN) as $ip) { if ($ip !== '') $ips[$ip] = true; }

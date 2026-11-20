@@ -26,6 +26,15 @@ check_login($ctx, true);
 
 $query = isset($_SERVER['QUERY_STRING']) ? rawurldecode($_SERVER['QUERY_STRING']) : '';
 
+// Overboard in mod mode: canonical URL is ?/o/ (with slash). Redirect the bare ?/o form
+// to it; normalise ?/o/ back to the registered ?/o route so it dispatches (else the
+// generic /(board)/ route treats "o" as a board, "Invalid board!").
+if ($query === '/o' || strncmp($query, '/o&', 3) === 0) {
+	header('Location: ?/o/' . substr($query, 2), true, $config['redirect_http']);
+	exit;
+}
+if ($query === '/o/' || strncmp($query, '/o/&', 4) === 0) { $query = '/o' . substr($query, 3); }
+
 $pages = [
 	''					=> ':?/',			// bare mod.php -> ?/ (homepage)
 	'/'					=> 'home',			// ?/ -> homepage (with mod bar/features, URL stays mod.php?/)
