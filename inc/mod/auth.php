@@ -161,6 +161,16 @@ function setCookies(): void {
 	];
 
 	setcookie($name, $value, $options);
+
+	// Readable (non-httponly) flag so staff-only client scripts (approval-queue
+	// notifications) can tell a logged-in mod from an ordinary visitor. Carries no secret.
+	setcookie('imgboard_staff', '1', [
+		'expires'  => time() + $config['cookies']['expire'],
+		'path'     => '/',
+		'secure'   => $is_https,
+		'httponly' => false,
+		'samesite' => 'Strict',
+	]);
 }
 
 function destroyCookies(): void {
@@ -200,6 +210,10 @@ function destroyCookies(): void {
 			unset($_COOKIE[$name]);
 		}
 	}
+
+	// Clear the readable staff flag set in setCookies().
+	setcookie('imgboard_staff', 'deleted', [ 'expires' => $del_time, 'path' => '/', 'secure' => false, 'httponly' => false, 'samesite' => 'Strict' ]);
+	unset($_COOKIE['imgboard_staff']);
 }
 
 function modLog(string $action, ?string $_board = null): void {

@@ -170,7 +170,9 @@ class Tinyboard extends Twig\Extension\AbstractExtension
 			new Twig\TwigFunction('imgboard_ppa_enabled', 'imgboard_ppa_enabled'),
 			new Twig\TwigFunction('imgboard_ppa_count', 'imgboard_ppa_count'),
 			// Imgboard: pending blocked-word/link suggestion counts for the dashboard.
-			new Twig\TwigFunction('imgboard_blocklist_suggested_count', 'imgboard_blocklist_suggested_count')
+			new Twig\TwigFunction('imgboard_blocklist_suggested_count', 'imgboard_blocklist_suggested_count'),
+			// Imgboard: numbered rules from rules.php, for the ban / propose-ban rule picker.
+			new Twig\TwigFunction('imgboard_rules_list', 'imgboard_rules_list')
 		);
 	}
 

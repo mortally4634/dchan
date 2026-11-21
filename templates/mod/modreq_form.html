@@ -16,6 +16,16 @@
 			<tr>
 				<th><label for="modreq_reason">Reason</label></th>
 				<td>
+					{% set _rules = imgboard_rules_list() %}
+					{% if _rules %}
+						<select onchange="imgboardFillRule(this,'modreq_reason')" style="display:block;margin-bottom:4px;max-width:360px;">
+							<option value="">&mdash; cite a rule (rules.php) &mdash;</option>
+							{% for r in _rules %}<option value="Rule {{ r.n }}: {{ r.text|e }}">{{ r.n }}. {{ r.text|slice(0,70)|e }}{% if r.text|length > 70 %}&hellip;{% endif %}</option>{% endfor %}
+						</select>
+						<script>
+						if(!window.imgboardFillRule){window.imgboardFillRule=function(sel,tid){var t=document.getElementById(tid);if(!t||!sel.value){return;}t.value=t.value.trim()?t.value.replace(/\s+$/,'')+'; '+sel.value:sel.value;sel.selectedIndex=0;};}
+						</script>
+					{% endif %}
 					<textarea id="modreq_reason" name="reason" rows="4" cols="48"
 						placeholder="{{ action == 'ban' ? 'Why should this poster be banned?' : 'Why should this post be deleted?' }}"></textarea>
 				</td>

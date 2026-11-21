@@ -2608,6 +2608,16 @@ function mod_reports(Context $ctx) {
 		$count++;
 	}
 
+	// Imgboard: surface pending ban appeals here, under the Report queue.
+	if (!empty($config['ban_appeals']) && hasPermission($config['mod']['view_ban_appeals'] ?? 20)) {
+		$appeal_count = 0;
+		try { if ($aq = query('SELECT COUNT(*) FROM ``ban_appeals``')) { $appeal_count = (int)$aq->fetchColumn(); } } catch (\Throwable $e) {}
+		if ($appeal_count > 0) {
+			$body = '<div class="ban-appeals-banner" style="margin:6px 0;padding:8px 12px;background:#ffe9a8;border:1px solid #d9a600;border-radius:4px;">'
+				. '&#9878; <a href="?/ban-appeals"><strong>Ban appeals (' . $appeal_count . ')</strong></a> awaiting review.</div>' . $body;
+		}
+	}
+
 	mod_page(
 		sprintf('%s (%d)', _('Report queue'), $count),
 		$config['file_mod_reports'],

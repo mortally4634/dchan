@@ -1355,6 +1355,10 @@ if (isset($_POST['delete'])) {
 	if (empty($post['mod']) && function_exists('imgboard_blocklist_match')
 			&& ($block_msg = imgboard_blocklist_match($post['body_nomarkup'])) !== null) {
 		undoImage($post);
+		// Auto-ban (24h, site-wide) the poster, then show them the ban/appeal screen.
+		if (function_exists('imgboard_blocklist_autoban')) {
+			imgboard_blocklist_autoban($_SERVER['REMOTE_ADDR'] ?? '', $block_msg);
+		}
 		error($block_msg);
 	}
 
@@ -1432,6 +1436,13 @@ if (isset($_POST['delete'])) {
 	$post['id'] = $id = post($post);
 	$post['slug'] = slugify($post);
 
+	// Imgboard: if this non-staff post entered the approval queue (a file -> MPA, or an
+	// external link -> LPA), notify staff (offline push; open tabs poll it themselves).
+	if (empty($post['mod']) && function_exists('imgboard_notify_pending')
+			&& (!empty($post['has_file'])
+				|| (function_exists('imgboard_extract_links') && imgboard_extract_links((string)($post['body'] ?? ''))))) {
+		imgboard_notify_pending($board['uri']);
+	}
 
 	if ($dropped_post && $dropped_post['from_nntp']) {
 		$query = prepare("INSERT INTO ``nntp_references`` (`board`, `id`, `message_id`, `message_id_digest`, `own`, `headers`) VALUES ".

@@ -21,6 +21,9 @@
         "dapphp/securimage": "^4.0",
         "erusev/parsedown":  "^1.7.4"
     },
+    "suggest": {
+        "minishlink/web-push": "Offline Web Push staff notifications (needs ext-gmp, ext-openssl, ext-curl). Install with: composer require minishlink/web-push:^7.0"
+    },
     "autoload": {
         "classmap": ["inc/"],
         "files": [

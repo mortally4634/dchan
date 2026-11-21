@@ -1324,6 +1324,34 @@ function imgboard_setting_set(string $name, string $value): void {
 	$q->execute() or error(db_error($q));
 }
 
+// The numbered rules from rules.php, for the ban / propose-ban rule picker:
+// [ ['n' => 1, 'text' => '...'], ... ] from the top-level ordered list of the
+// (admin-editable) rules HTML. Cached per request.
+// shortcut: top-level <ol> only; nested sub-points fold into their parent's text.
+function imgboard_rules_list(): array {
+	static $cache = null;
+	if ($cache !== null) return $cache;
+	$html = imgboard_setting_get('rules', IMGBOARD_DEFAULT_RULES);
+	$out = [];
+	if (trim($html) !== '') {
+		$d = new DOMDocument();
+		libxml_use_internal_errors(true);
+		$d->loadHTML('<?xml encoding="utf-8"?><div>' . $html . '</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+		libxml_clear_errors();
+		$ol = $d->getElementsByTagName('ol')->item(0);
+		if ($ol) {
+			$n = 0;
+			foreach ($ol->childNodes as $li) {
+				if (strtolower($li->nodeName) !== 'li') continue;
+				$text = trim(preg_replace('/\s+/u', ' ', $li->textContent));
+				if ($text === '') continue;
+				$out[] = ['n' => ++$n, 'text' => mb_substr($text, 0, 200)];
+			}
+		}
+	}
+	return $cache = $out;
+}
+
 // Default page content (shown until an admin edits it).
 const IMGBOARD_DEFAULT_RULES = <<<'HTML'
 <ol>
@@ -2331,18 +2359,64 @@ function imgboard_blocklist_cached(string $type): array {
 
 // If the body contains an active blocked word or link, return the error
 // message to show; otherwise null. (The caller cleans up any upload first.)
+// Canonical form of a link, so one blocked link is caught however it is written: scheme,
+// www., case, percent-encoding (incl. double), HTML entities, zero-width / direction-override
+// characters, inserted spaces, "(dot)"-style obfuscation and a trailing slash are all removed.
+// Full evasion is an arms race; this defeats the common dodges.
+// shortcut: host+path canonicalisation only; does not resolve URL shorteners/redirectors.
+function imgboard_link_canon(string $s): string {
+	for ($i = 0; $i < 3 && strpos($s, '%') !== false; $i++) {
+		$d = rawurldecode($s);
+		if ($d === $s) break;
+		$s = $d;
+	}
+	$s = html_entity_decode($s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+	$s = preg_replace('/[\x{200B}-\x{200F}\x{202A}-\x{202E}\x{2060}\x{FEFF}\x{00AD}\x{180E}]/u', '', (string)$s);
+	$s = mb_strtolower(trim((string)$s), 'UTF-8');
+	$s = str_ireplace([' (dot) ', '(dot)', '[dot]', '{dot}', ' dot '], '.', $s);
+	$s = preg_replace('~^[a-z][a-z0-9+.\-]*:~', '', $s);   // strip scheme
+	$s = preg_replace('~^/+~', '', $s);                    // strip leading //
+	$s = preg_replace('~^www\.~', '', $s);                 // strip www.
+	$s = str_replace(' ', '', $s);                         // links never contain real spaces
+	return rtrim($s, "/.\t\r\n");
+}
+
+// Return the error to show if the post body contains an active blocked word or link,
+// else null. Words match literally; links are matched canonically (see imgboard_link_canon)
+// against both every link found in the body and the whole body, so obfuscated links still hit.
 function imgboard_blocklist_match(string $body_nomarkup): ?string {
 	foreach (imgboard_blocklist_cached('words') as $w) {
 		if ($w !== '' && mb_stripos($body_nomarkup, $w) !== false) {
 			return 'Your post contains a blocked word.';
 		}
 	}
-	foreach (imgboard_blocklist_cached('links') as $l) {
-		if ($l !== '' && mb_stripos($body_nomarkup, $l) !== false) {
-			return 'Your post contains a blocked link.';
+	$links = imgboard_blocklist_cached('links');
+	if ($links) {
+		$candidates = [imgboard_link_canon($body_nomarkup)];
+		foreach (imgboard_extract_links($body_nomarkup) as $u) { $candidates[] = imgboard_link_canon($u); }
+		foreach ($links as $l) {
+			$lc = imgboard_link_canon((string)$l);
+			if ($lc === '') continue;
+			foreach ($candidates as $c) {
+				if ($c !== '' && mb_strpos($c, $lc) !== false) {
+					return 'Your post contains a blocked link.';
+				}
+			}
 		}
 	}
 	return null;
+}
+
+// Auto-ban (24h, site-wide) a poster whose post was refused for a blocked word/link. They
+// then see the ban screen and can appeal (if ban appeals are enabled). Called from post.php.
+// A currently-banned user can't post, so this never stacks bans on itself.
+// shortcut: fixed 24h site-wide; make the length/scope configurable if staff want.
+function imgboard_blocklist_autoban(string $ip, string $why): void {
+	if ($ip === '' || !class_exists('Bans')) return;
+	try {
+		Bans::new_ban($ip, 'Automatic ban: ' . $why, '24h', false /* site-wide */, -1 /* system */, false);
+		if (function_exists('modLog')) { modLog('Auto-banned (24h) a poster for a blocked word/link', false); }
+	} catch (\Throwable $e) { /* never block the error response on a ban failure */ }
 }
 
 /* ----------------------------------------------------------------------- *
@@ -3085,6 +3159,8 @@ function imgboard_ppa_hold(string $board_uri, array $post): void {
 	$q->bindValue(':time', time(), PDO::PARAM_INT);
 	$q->execute() or error(db_error($q));
 
+	if (function_exists('imgboard_notify_pending')) { imgboard_notify_pending($board_uri); }
+
 	$idx = $config['root'] . $board_uri . '/' . $config['file_index'];
 	$body = '<div class="ppa-held" style="text-align:center;margin:50px auto;max-width:620px;">'
 		. '<h2>Post submitted</h2>'
@@ -3198,4 +3274,141 @@ function mod_ppa_reject(Context $ctx, $id) {
 		modLog('Rejected pending post #' . $id . ' on /' . $row['board'] . '/');
 	}
 	header('Location: ?/pending', true, $config['redirect_http']);
+}
+
+/* ----------------------------------------------------------------------- *
+ *  Staff notifications (approval-queue): an online poller (?/notify-poll) that
+ *  open mod tabs read, plus offline Web Push. Push is a no-op until VAPID keys
+ *  ($config['imgboard_vapid']) are set AND minishlink/web-push is installed
+ *  (composer), so this ships inert. js/imgboard-staff-notify.js is the client.
+ * ----------------------------------------------------------------------- */
+
+// Total items in the approval queue the current mod can act on (pending files + links +
+// held posts). Drives the title badge and the "N awaiting approval" notification.
+function imgboard_notify_count(): int {
+	$n = 0;
+	if (function_exists('imgboard_pending_count')) { $n += imgboard_pending_count('files') + imgboard_pending_count('links'); }
+	if (function_exists('imgboard_ppa_count')) { $n += imgboard_ppa_count(); }
+	return $n;
+}
+
+// JSON the client polls. Mod-only (mod.php sends non-mods to the login page, hence staff:0).
+function mod_notify_poll(Context $ctx) {
+	global $mod, $config;
+	header('Content-Type: application/json');
+	header('Cache-Control: no-store');
+	if (!$mod) { echo '{"staff":0}'; return; }
+	echo json_encode([
+		'staff'   => 1,
+		'pending' => imgboard_notify_count(),
+		'vapid'   => $config['imgboard_vapid']['public'] ?? '',
+	]);
+}
+
+function imgboard_push_table(): string {
+	imgboard_ddl_once("CREATE TABLE IF NOT EXISTS ``imgboard_push_subs`` (
+		`id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+		`mod_id` int(11) DEFAULT NULL,
+		`endpoint` varchar(512) NOT NULL,
+		`p256dh` varchar(255) NOT NULL,
+		`auth` varchar(255) NOT NULL,
+		`time` int(11) NOT NULL,
+		PRIMARY KEY (`id`),
+		UNIQUE KEY `endpoint` (`endpoint`(191))
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4") or error(db_error());
+	return 'imgboard_push_subs';
+}
+
+function mod_notify_subscribe(Context $ctx) {
+	global $mod;
+	header('Content-Type: application/json');
+	if (!$mod) { echo '{"ok":0}'; return; }
+	$d = json_decode((string)file_get_contents('php://input', false, null, 0, 8192), true);
+	$ep = is_array($d) ? ($d['endpoint'] ?? '') : '';
+	$p  = is_array($d) ? ($d['keys']['p256dh'] ?? '') : '';
+	$a  = is_array($d) ? ($d['keys']['auth'] ?? '') : '';
+	if (!is_string($ep) || $ep === '' || !is_string($p) || $p === '' || !is_string($a) || $a === '') { echo '{"ok":0}'; return; }
+	imgboard_push_table();
+	$q = prepare("INSERT INTO ``imgboard_push_subs`` (`mod_id`,`endpoint`,`p256dh`,`auth`,`time`)
+		VALUES (:m,:e,:p,:a,:t)
+		ON DUPLICATE KEY UPDATE `mod_id`=:m2,`p256dh`=:p2,`auth`=:a2,`time`=:t2");
+	$q->bindValue(':m', $mod['id'], PDO::PARAM_INT);
+	$q->bindValue(':e', $ep);
+	$q->bindValue(':p', $p);
+	$q->bindValue(':a', $a);
+	$q->bindValue(':t', time(), PDO::PARAM_INT);
+	$q->bindValue(':m2', $mod['id'], PDO::PARAM_INT);
+	$q->bindValue(':p2', $p);
+	$q->bindValue(':a2', $a);
+	$q->bindValue(':t2', time(), PDO::PARAM_INT);
+	$q->execute() or error(db_error($q));
+	echo '{"ok":1}';
+}
+
+function mod_notify_unsubscribe(Context $ctx) {
+	global $mod;
+	header('Content-Type: application/json');
+	if (!$mod) { echo '{"ok":0}'; return; }
+	$d = json_decode((string)file_get_contents('php://input', false, null, 0, 8192), true);
+	$ep = is_array($d) ? ($d['endpoint'] ?? '') : '';
+	if (is_string($ep) && $ep !== '') {
+		imgboard_push_table();
+		$q = prepare("DELETE FROM ``imgboard_push_subs`` WHERE `endpoint` = :e");
+		$q->bindValue(':e', $ep);
+		$q->execute();
+	}
+	echo '{"ok":1}';
+}
+
+// Send a Web Push to every subscribed staff browser. No-op unless VAPID keys are set and
+// minishlink/web-push is installed. Gone subscriptions (404/410) are pruned. Failures are
+// swallowed so a push problem never breaks the poster's request.
+// shortcut: sends synchronously (curl_multi, ~one round-trip for all subs); move to the
+//           queue/worker if the subscriber count grows large.
+function imgboard_push_send(string $title, string $body, string $url): void {
+	global $config;
+	$pub = $config['imgboard_vapid']['public'] ?? '';
+	$prv = $config['imgboard_vapid']['private'] ?? '';
+	if ($pub === '' || $prv === '' || !class_exists('Minishlink\\WebPush\\WebPush')) { return; }
+	try {
+		imgboard_push_table();
+		$rows = query("SELECT `id`,`endpoint`,`p256dh`,`auth` FROM ``imgboard_push_subs``");
+		$subs = $rows ? $rows->fetchAll(PDO::FETCH_ASSOC) : [];
+		if (!$subs) { return; }
+		$webPush = new Minishlink\WebPush\WebPush([ 'VAPID' => [
+			'subject'    => $config['imgboard_vapid']['subject'] ?? 'mailto:admin@example.com',
+			'publicKey'  => $pub,
+			'privateKey' => $prv,
+		] ]);
+		$payload = json_encode([ 'title' => $title, 'body' => $body, 'url' => $url ]);
+		$byEndpoint = [];
+		foreach ($subs as $s) {
+			$byEndpoint[$s['endpoint']] = $s['id'];
+			$webPush->queueNotification(
+				Minishlink\WebPush\Subscription::create([
+					'endpoint' => $s['endpoint'],
+					'keys'     => [ 'p256dh' => $s['p256dh'], 'auth' => $s['auth'] ],
+				]),
+				$payload
+			);
+		}
+		foreach ($webPush->flush() as $report) {
+			$ep = $report->getEndpoint();
+			if (!$report->isSuccess() && isset($byEndpoint[$ep])) {
+				$del = prepare("DELETE FROM ``imgboard_push_subs`` WHERE `id` = :id");
+				$del->bindValue(':id', $byEndpoint[$ep], PDO::PARAM_INT);
+				$del->execute();
+			}
+		}
+	} catch (\Throwable $e) { /* never break the caller */ }
+}
+
+// Fired when a post/image/link enters the approval queue (MPA/LPA in post.php, or a PPA
+// hold). Online tabs poll ?/notify-poll themselves, so this only drives the offline push.
+function imgboard_notify_pending(string $board = ''): void {
+	imgboard_push_send(
+		'New post awaiting approval',
+		'A post' . ($board !== '' ? ' on /' . $board . '/' : '') . ' is in the approval queue.',
+		'/mod.php?/pending'
+	);
 }

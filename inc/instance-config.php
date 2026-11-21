@@ -77,6 +77,23 @@
 	// page whenever the imgboard_viewas cookie is set (staff role-preview mode).
 	$config['additional_javascript'][] = 'js/imgboard-viewas.js';
 
+	// Staff approval-queue notifications (js/imgboard-staff-notify.js): a bell widget for
+	// logged-in staff with Off / Online / Online+offline(push). Does nothing for ordinary
+	// visitors (gated on the readable imgboard_staff cookie set at login).
+	$config['additional_javascript'][] = 'js/imgboard-staff-notify.js';
+	$config['mod']['custom_pages']['/notify-poll']        = 'notify_poll';
+	$config['mod']['custom_pages']['/notify-subscribe']   = 'notify_subscribe';
+	$config['mod']['custom_pages']['/notify-unsubscribe'] = 'notify_unsubscribe';
+
+	// Web Push (offline notifications) VAPID keys. Empty = offline push stays off (online
+	// still works). Generate with `php tools/gen-vapid.php` (needs minishlink/web-push,
+	// `composer require minishlink/web-push`) and set them here or via the env vars.
+	$config['imgboard_vapid'] = [
+		'public'  => getenv('VICHAN_VAPID_PUBLIC')  ?: '',
+		'private' => getenv('VICHAN_VAPID_PRIVATE') ?: '',
+		'subject' => 'mailto:contact@example.com',
+	];
+
 	// Hovering a >>X reference inside a post highlights the post it refers to, in
 	// place (the header post number does not).
 	$config['additional_javascript'][] = 'js/hover-highlight.js';
@@ -162,6 +179,10 @@
 	 * ------------------------------------------------------------- */
 	$config['cookies']['expire'] = 60 * 60 * 24 * 365 * 10; // ~10 years
 	$config['mod']['lock_ip']    = true;
+
+	// Let banned users appeal (the appeal form shows on the ban screen; pending appeals
+	// surface under the Report queue and at ?/ban-appeals). Drives the auto-ban safety net.
+	$config['ban_appeals'] = true;
 
 	// Staff-only boards: viewable/postable only by logged-in staff, hidden from
 	// the public board list and homepage. /j/ is the staff board (SIDs on);
