@@ -14,7 +14,13 @@
 	if (window.__imgboardNotify) { return; }
 	window.__imgboardNotify = true;
 
-	if (!/(?:^|;\s*)imgboard_staff=1(?:;|$)/.test(document.cookie)) { return; } // staff only
+	// Run on any mod.php page (those are staff-only, so no cookie needed there), and on
+	// other pages only when the readable staff cookie is present (set at login) so ordinary
+	// visitors never poll. Gating the mod pages on the cookie would miss sessions that
+	// logged in before the cookie existed.
+	var onModPage = /\/mod\.php(?:[/?]|$)/.test(location.href);
+	var staffCookie = /(?:^|;\s*)imgboard_staff=1(?:;|$)/.test(document.cookie);
+	if (!onModPage && !staffCookie) { return; }
 
 	var POLL_URL = '/mod.php?/notify-poll';
 	var SUB_URL = '/mod.php?/notify-subscribe';
@@ -90,10 +96,19 @@
 		});
 	}
 
+	function requestPerm() {
+		try {
+			if (window.Notification && Notification.permission === 'default') {
+				var r = Notification.requestPermission(function () {}); // legacy callback form
+				if (r && r.then) { r['catch'](function () {}); }           // + modern promise form
+			}
+		} catch (e) {}
+	}
+
 	function applyOn(on, interactive) {
 		setNotifyOn(on);
 		if (!on) { disableOffline(); return; }
-		if (interactive && window.Notification && Notification.permission === 'default') { Notification.requestPermission(); }
+		if (interactive) { requestPerm(); } // must run in the checkbox's user-gesture
 		enableOffline();
 	}
 
