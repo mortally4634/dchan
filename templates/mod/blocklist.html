@@ -6,7 +6,7 @@
 			Posts containing an <strong>active</strong> blocked link are rejected.
 		{% endif %}
 		{% if can_edit %}
-			One entry per line &mdash; edit the list and press <strong>Save</strong>.
+			One entry per line - edit the list and press <strong>Save</strong>.
 		{% elseif can_suggest %}
 			You can suggest entries for a moderator to approve.
 		{% endif %}
@@ -36,7 +36,7 @@
 				{% for it in suggested %}
 					<li>
 						<code>{{ it.value|e }}</code>
-						{% if it.added_by %}<span class="bl-by">&mdash; @{{ it.added_by|e }}</span>{% endif %}
+						{% if it.added_by %}<span class="bl-by">- @{{ it.added_by|e }}</span>{% endif %}
 						{% if can_edit %}
 							<span class="bl-actions">
 								<a href="?/blocked-{{ type }}/approve/{{ it.id }}/{{ it.approve_token }}">[approve]</a>

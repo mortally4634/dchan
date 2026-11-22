@@ -8,7 +8,7 @@
 				<div class="imgboard-box-head" style="font-weight:bold;padding:4px 8px;border-bottom:1px solid rgba(127,127,127,0.4);">
 					{% if n.subject %}{{ n.subject|e }}{% else %}News{% endif %}
 					<span style="float:right;font-weight:normal;font-size:12px;">
-						{{ n.name|e }} &mdash; {{ n.time|date(config.post_date) }}
+						{{ n.name|e }} - {{ n.time|date(config.post_date) }}
 					</span>
 				</div>
 				<div style="padding:10px 16px;line-height:1.5;">{{ n.body|raw }}</div>

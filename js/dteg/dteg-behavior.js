@@ -2,7 +2,7 @@
  * DTEG  --  dteg-behavior.js
  * --------------------------
  * Input-cadence (behavioural biometrics) for bot detection. It records HOW input
- * happens — the rhythm of keystrokes and the motion of the mouse — and reports
+ * happens - the rhythm of keystrokes and the motion of the mouse - and reports
  * only timing/geometry STATISTICS. It deliberately never reads which keys are
  * pressed, any field value, or any typed text: keys are paired for dwell timing
  * by physical position + keyCode as an opaque id, and nothing else about them is

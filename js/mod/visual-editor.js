@@ -1,10 +1,10 @@
 /*
- * visual-editor.js — example.com
+ * visual-editor.js - example.com
  *
  * Turns any <textarea class="wysiwyg-html"> into a small visual (WYSIWYG)
  * editor: a formatting toolbar above a contenteditable surface. The original
  * textarea is kept in the DOM (hidden) and holds the real HTML that gets
- * POSTed — the editable surface just writes its innerHTML back into it on
+ * POSTed - the editable surface just writes its innerHTML back into it on
  * every change and again on submit, so the server side is unchanged.
  *
  * To give a future editor the same treatment: add class="wysiwyg-html" to its

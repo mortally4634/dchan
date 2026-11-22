@@ -49,7 +49,7 @@ $(document).ready(function(){
 				{% set _rules = imgboard_rules_list() %}
 				{% if _rules %}
 					<select onchange="imgboardFillRule(this,'reason')" style="display:block;margin-bottom:4px;max-width:320px;">
-						<option value="">&mdash; cite a rule (rules.php) &mdash;</option>
+						<option value="">- cite a rule (rules.php) -</option>
 						{% for r in _rules %}<option value="Rule {{ r.n }}: {{ r.text|e }}">{{ r.n }}. {{ r.text|slice(0,70)|e }}{% if r.text|length > 70 %}&hellip;{% endif %}</option>{% endfor %}
 					</select>
 					<script>

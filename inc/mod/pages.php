@@ -54,7 +54,7 @@ function mod_login(Context $ctx, $redirect = false) {
 	if ($secure_login_mode !== 0 && !Net\is_connection_secure($secure_login_mode === 1)) {
 		$args['error'] = $config['error']['insecure'];
 	} elseif (isset($_POST['login'])) {
-		// Imgboard: brute-force throttle — lock an IP out after too many
+		// Imgboard: brute-force throttle - lock an IP out after too many
 		// failed logins in a window (keyed on the real client IP).
 		$login_ip = function_exists('imgboard_login_ip_key') ? imgboard_login_ip_key($_SERVER['REMOTE_ADDR'] ?? '') : ($_SERVER['REMOTE_ADDR'] ?? '');
 		$login_user = function_exists('imgboard_login_user_key') && isset($_POST['username']) && is_string($_POST['username']) ? imgboard_login_user_key($_POST['username']) : '';
@@ -1700,7 +1700,7 @@ function mod_ban_post(Context $ctx, $board, $delete, $post, $token = false) {
 	// imgboard B&D+/++: the delete-scope arrives in the route ($delete can be
 	// '&delete', '&delete&board' or '&delete&global') on GET, and in a hidden
 	// field on submit. 'board' deletes all posts by this IP on this board,
-	// 'global' across all boards — otherwise just the single post.
+	// 'global' across all boards - otherwise just the single post.
 	$delete_scope = (strpos((string)$delete, '&global') !== false) ? 'global'
 		: ((strpos((string)$delete, '&board') !== false) ? 'board' : 'single');
 

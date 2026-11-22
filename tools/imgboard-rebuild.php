@@ -116,7 +116,7 @@ if ($q && !$q->fetch()) {
 	$ins = prepare("INSERT INTO ``boards`` VALUES (:uri, :title, :subtitle)");
 	$ins->bindValue(':uri', 'test');
 	$ins->bindValue(':title', 'Test');
-	$ins->bindValue(':subtitle', 'Staff testing — post whatever');
+	$ins->bindValue(':subtitle', 'Staff testing - post whatever');
 	$ins->execute() or error(db_error($ins));
 	openBoard('test');
 	$sql = Element('posts.sql', [ 'board' => 'test' ]);

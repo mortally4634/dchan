@@ -23,7 +23,7 @@
 		{% for log in logs %}
 			<tr>
 				<td class="minimal"><span title="{{ log.time|date(config.post_date) }}">{{ log.time|ago }}</span></td>
-				<td class="minimal">{% if log.board %}/{{ log.board|e }}/{% else %}&mdash;{% endif %}</td>
+				<td class="minimal">{% if log.board %}/{{ log.board|e }}/{% else %}-{% endif %}</td>
 				<td>
 					<form method="post" action="?/modlog-edit" style="display:flex;gap:4px;">
 						<input type="hidden" name="token" value="{{ token }}">

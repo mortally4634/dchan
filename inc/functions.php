@@ -907,7 +907,7 @@ function post(array $post) {
 	$query->bindValue(':is_vpn', !empty($post['is_vpn']) ? 1 : 0, PDO::PARAM_INT);
 	$query->bindValue(':show_poster_id', !empty($post['show_poster_id']) ? 1 : 0, PDO::PARAM_INT);
 
-	// Posting mod's account id — recorded only when a mod posts as staff, so the
+	// Posting mod's account id - recorded only when a mod posts as staff, so the
 	// staff-board SID can show their user id instead of an IP hash.
 	if (!empty($post['mod']) && isset($post['mod_id'])) {
 		$query->bindValue(':mod_id', $post['mod_id'], PDO::PARAM_INT);
@@ -1898,7 +1898,7 @@ function unicodify($body) {
 	// En and em- dashes are rendered exactly the same in
 	// most monospace fonts (they look the same in code
 	// editors).
-	$body = str_replace('---', '&mdash;', $body); // em dash
+	$body = str_replace('---', '-', $body); // em dash
 	$body = str_replace('--', '&ndash;', $body); // en dash
 
 	return $body;

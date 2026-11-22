@@ -289,7 +289,7 @@
 
 	$config['captcha'] = [
 		// Can be false, 'recaptcha', 'hcaptcha' or 'native'.
-		// NOTE: 'native' (the bundled Czaks captcha) is NOT usable here — it is
+		// NOTE: 'native' (the bundled Czaks captcha) is NOT usable here - it is
 		// JS-only (load_captcha fetches HTML; there is no no-JS image mode) and
 		// inc/captcha/config.php still has placeholder DB credentials, so it
 		// rejects every post. example.com's own no-JS captcha is implemented
@@ -917,7 +917,7 @@
 	$config['max_width'] = 10000;
 	$config['max_height'] = $config['max_width'];
 	// Reject duplicate image uploads.
-	// Imgboard: off — reposting the same reaction image is normal here, and
+	// Imgboard: off - reposting the same reaction image is normal here, and
 	// the "That file already exists!" rejection just blocks it. Dupes are handled
 	// by the client-side file-hash filter instead, not a hard post rejection.
 	$config['image_reject_repost'] = false;
@@ -1157,7 +1157,7 @@
 	$config['additional_javascript'][] = 'js/inline-expanding.js';
 
 	// Imgboard: user Options panel ([Options] link, top-right of the
-	// boardlist). vichan's panel is modular — each module below registers or
+	// boardlist). vichan's panel is modular - each module below registers or
 	// extends a tab. Load order matters: options.js defines the framework,
 	// style-select.js must precede options/general.js (which detaches
 	// #style-select into the General tab), and webm-settings.js must precede
@@ -1751,7 +1751,7 @@
 	// decide to change it, remember that it is impossible to redefinite/overwrite groups; you may only add
 	// new ones.
 	$config['mod']['groups'] = [
-		// Imgboard: Mediator — a sub-janitor role. It cannot delete or ban
+		// Imgboard: Mediator - a sub-janitor role. It cannot delete or ban
 		// directly; it *proposes* ("votes for") deletions and bans that Janitors+
 		// approve, makes notes on posters, and works the media/link pending queues.
 		// It sits below Janitor so the linear permission model (a group inherits
@@ -1765,7 +1765,7 @@
 		// inherits every Admin permission (linear threshold) plus the Schizo reset,
 		// but not Root ownership. Only one account may hold it at a time.
 		35	=> 'Manager',
-		// Imgboard: Root is the website owner — the single highest account. As
+		// Imgboard: Root is the website owner - the single highest account. As
 		// the top group it inherits every permission, owner-only controls (JSID,
 		// and the right to assign Manager/Root) follow this role, and handing Root
 		// to someone else transfers ownership. Only one account may be Root.
@@ -1881,7 +1881,7 @@
 	$config['mod']['manageboards'] = ADMIN;
 	// Delete a board
 	$config['mod']['deleteboard'] = ADMIN;
-	// Imgboard: CattyWipe — wipe a board down to its stickied threads only
+	// Imgboard: CattyWipe - wipe a board down to its stickied threads only
 	$config['mod']['cattywipe'] = ADMIN;
 
 	// Imgboard: poll moderation perms.
@@ -1893,7 +1893,7 @@
 	//   approve_mod_requests        : who may APPROVE/DENY those proposals (Janitor+).
 	// The post-control "propose" links are shown only to roles that can vote but
 	// cannot approve (i.e. Mediators), so Janitors+ never see redundant links.
-	// (approve_files / approve_links — the MPA/LPA pending queues — are lowered to
+	// (approve_files / approve_links - the MPA/LPA pending queues - are lowered to
 	// Mediator in inc/mod/pending.php, where they are defined.)
 	$config['mod']['vote_delete']          = MEDIATOR;
 	$config['mod']['vote_ban']             = MEDIATOR;

@@ -1,5 +1,5 @@
 /*
- * DTEG / imgboard staff notifications — service worker (Web Push).
+ * DTEG / imgboard staff notifications - service worker (Web Push).
  * Receives push messages (sent by fp/notify endpoints when something enters the approval
  * queue) and shows an OS notification even when no tab is open. Push delivery does not
  * depend on the SW's scope, so this lives under /js/ to avoid needing a root file.

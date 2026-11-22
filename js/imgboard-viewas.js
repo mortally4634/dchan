@@ -22,7 +22,7 @@
 			'text-align:center;box-shadow:0 -2px 8px rgba(0,0,0,.35);';
 
 		var label = document.createElement('span');
-		label.textContent = 'Previewing the site as ' + role + ' — ';
+		label.textContent = 'Previewing the site as ' + role + ' - ';
 
 		var exit = document.createElement('a');
 		exit.href = '/mod.php?/viewas/off';

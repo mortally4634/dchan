@@ -4,12 +4,17 @@
 	from whichever queues the mod may act on. The whole thing stays inside one
 	.pending-approval container so the 20s auto-update below refreshes both.
 #}
+<label style="display:block;margin:4px 0 12px;padding:6px 10px;background:#f3f1ff;border:1px solid #9988ee;border-radius:4px;">
+	<input type="checkbox" id="imgboard-notify-checkbox">
+	&#128276; Notify me when items are waiting in the queue - approvals, reports, mod requests and ban appeals.
+	<span class="unimportant">(this browser; offline alerts need push enabled)</span>
+</label>
 <div class="pending-approval">
 	{% if pending_posts is defined and (pending_posts|length > 0 or ppa_enabled or ppa_can_toggle) %}
 		<section id="pending-posts" class="pending-section" data-kind="post">
 			<h2 style="margin:12px 0 4px;">Pending posts
 				{% if ppa_can_toggle %}
-					<small style="font-weight:normal;">&mdash; hold new posts on:
+					<small style="font-weight:normal;">- hold new posts on:
 						{% for b in ppa_board_toggles %}
 							<label style="margin-right:6px;"><input type="checkbox" {% if b.on %}checked{% endif %} onchange="window.location='?/ppa/toggle/{{ b.uri }}/{{ b.token }}'"> /{{ b.uri }}/</label>
 						{% endfor %}
@@ -26,7 +31,7 @@
 			{% for p in pending_posts %}
 				<fieldset>
 					<legend>
-						/{{ p.board|e }}/ &mdash; {{ p.is_op ? 'new thread' : 'reply' }}{% if p.thread %} to #{{ p.thread }}{% endif %}
+						/{{ p.board|e }}/ - {{ p.is_op ? 'new thread' : 'reply' }}{% if p.thread %} to #{{ p.thread }}{% endif %}
 						&nbsp;
 						<a class="approve-link" href="?/ppa/approve/{{ p.id }}/{{ p.approve_token }}">[Approve]</a>
 						<a class="reject-link" style="color:#b00" href="?/ppa/reject/{{ p.id }}/{{ p.reject_token }}" onclick="return confirm('Reject and delete this post and its files?')">[Reject]</a>
@@ -56,7 +61,7 @@
 			{% for post in s.pending %}
 				<fieldset>
 					<legend>
-						/{{ post.board }}/ &mdash; post
+						/{{ post.board }}/ - post
 						<a href="?/{{ post.board }}/res/{{ post.thread ? post.thread : post.id }}.html#{{ post.id }}">#{{ post.id }}</a>
 						&nbsp;
 						<a class="approve-link" href="?/{{ post.board }}/{{ post.approve_action }}/{{ post.id }}/{{ post.approve_token }}">[Approve]</a>

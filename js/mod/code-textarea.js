@@ -1,9 +1,9 @@
 /*
- * code-textarea.js — example.com
+ * code-textarea.js - example.com
  *
  * Upgrades any <textarea class="code-lines"> into a code-editor-style box with
- * a line-number gutter down the left edge. It stays a plain textarea — one
- * entry per line — so the form posts exactly what was typed; the gutter is
+ * a line-number gutter down the left edge. It stays a plain textarea - one
+ * entry per line - so the form posts exactly what was typed; the gutter is
  * cosmetic and kept in sync with the content and scroll position.
  *
  * Lines are not soft-wrapped (wrap="off"), so each logical line is one visual

@@ -90,7 +90,7 @@ try {
 	// Is this page load from a logged-in staff member? If so, still record the sighting
 	// (so admins can view it at ?/fp/<hash>), but also stamp the staff member's
 	// identifiers into imgboard_staff_fp so they are excluded from the user fingerprint
-	// list / .zip / .txt — including staff who only lurk and never post. Validate the mod
+	// list / .zip / .txt - including staff who only lurk and never post. Validate the mod
 	// cookie directly (mkhash); check_login() has side effects (destroyCookies/exit)
 	// unsuitable for this silent sink.
 	$is_staff = false;

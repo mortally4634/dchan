@@ -1,9 +1,9 @@
 /*
- * hover-highlight.js — example.com
+ * hover-highlight.js - example.com
  *
  * Hovering a ">>19" reference inside a post highlights the post it refers to, in
  * place. The post's own number in its header ("No." / "19") does NOT highlight. The click behaviour
- * (highlightReply / citeReply) is untouched — this uses its own
+ * (highlightReply / citeReply) is untouched - this uses its own
  * `hover-highlighted` class, styled in stylesheets/style.css.
  */
 (function () {

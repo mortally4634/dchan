@@ -1,6 +1,6 @@
 <div class="steg">
 	<p>
-		<a href="{{ file_url }}" target="_blank">{{ file }}</a> &mdash; {{ report.type }},
+		<a href="{{ file_url }}" target="_blank">{{ file }}</a> - {{ report.type }},
 		{{ report.size|number_format }} bytes{% if report.width %}, {{ report.width }}&times;{{ report.height }}{% endif %}<br>
 		MD5 {{ report.md5 }}<br>SHA-1 {{ report.sha1 }}
 	</p>

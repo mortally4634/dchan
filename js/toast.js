@@ -1,5 +1,5 @@
 /*
- * toast.js — example.com
+ * toast.js - example.com
  *
  * Thin wrapper over Toastify (js/toastify.js) exposing a single global:
  *

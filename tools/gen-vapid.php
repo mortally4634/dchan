@@ -15,6 +15,6 @@ if (!class_exists('Minishlink\\WebPush\\VAPID')) {
 }
 
 $keys = Minishlink\WebPush\VAPID::createVapidKeys();
-echo "// Web Push (VAPID) keys — generated " . gmdate('Y-m-d H:i') . " UTC. Keep the private key secret.\n";
+echo "// Web Push (VAPID) keys - generated " . gmdate('Y-m-d H:i') . " UTC. Keep the private key secret.\n";
 echo "\$config['imgboard_vapid']['public']  = '" . $keys['publicKey'] . "';\n";
 echo "\$config['imgboard_vapid']['private'] = '" . $keys['privateKey'] . "';\n";

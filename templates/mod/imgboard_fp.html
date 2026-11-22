@@ -39,7 +39,7 @@
 	<p class="fp-actions">
 		<button type="button" class="fp-btn" onclick="imgboardCopyReport(this)">Copy to clipboard</button>
 		<a class="fp-btn" href="?/fp/{{ hash|e }}&amp;format=txt" download="fingerprint-{{ hash|e }}.txt">Download .txt</a>
-		<span class="unimportant">({{ can_raw ? 'full report' : 'moderation data only' }} &mdash; exactly what your role may see)</span>
+		<span class="unimportant">({{ can_raw ? 'full report' : 'moderation data only' }} - exactly what your role may see)</span>
 	</p>
 	<textarea id="fp-report" readonly aria-hidden="true" style="position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;">{{ report_text|e }}</textarea>
 	<script>
@@ -57,7 +57,7 @@
 
 	{% if summary %}
 		{# Role-limited digest: only the highlight features this role may see. #}
-		<h3>Highlights <span class="unimportant">({{ can_raw ? 'admin — includes standout device signals' : 'moderation highlights only' }})</span></h3>
+		<h3>Highlights <span class="unimportant">({{ can_raw ? 'admin - includes standout device signals' : 'moderation highlights only' }})</span></h3>
 		<table>
 			{% for h in highlights %}
 			<tr><td class="k">{{ h.label|e }}</td><td class="v">{{ h.value|e }}</td></tr>
@@ -106,7 +106,7 @@
 			{% for h in hwids %} &middot; <a href="?/search/posts/{{ h|e }}">hwid {{ h|e }}</a>{% endfor %}
 		</p>
 
-		<h3>Signal breakdown <span class="unimportant">(raw, un-hashed &mdash; from the most recent sighting)</span></h3>
+		<h3>Signal breakdown <span class="unimportant">(raw, un-hashed - from the most recent sighting)</span></h3>
 		{% if not can_raw %}
 			<p class="unimportant">The raw, un-hashed signal breakdown is Admin-only. You can see the trust score, spoof tells and every sighting above.</p>
 		{% else %}

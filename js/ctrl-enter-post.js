@@ -1,5 +1,5 @@
 /*
- * ctrl-enter-post.js — example.com
+ * ctrl-enter-post.js - example.com
  *
  * Ctrl+Enter (Cmd+Enter on a Mac) in a post form's text boxes submits the post, as if the
  * Post button were pressed: same validation, same ajax handling. Works in the normal form

@@ -24,7 +24,7 @@
 {% endif %}
 
 {# Imgboard: Mediator moderation-by-proposal. Shown only to roles that may
-   vote but not approve (i.e. Mediators) — Janitors+ delete/ban directly. #}
+   vote but not approve (i.e. Mediators) - Janitors+ delete/ban directly. #}
 {% if mod|hasPermission(config.mod.vote_delete, board.uri) and not mod|hasPermission(config.mod.approve_mod_requests, board.uri) %}
 	<a title="{% trans %}Propose this post for deletion{% endtrans %}" href="?/{{ board.dir }}votedelete/{{ post.id }}">[{% trans %}vote-delete{% endtrans %}]</a>&nbsp;
 {% endif %}

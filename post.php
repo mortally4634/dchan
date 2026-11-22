@@ -572,6 +572,7 @@ if (isset($_POST['delete'])) {
 		$query->bindValue(':post', $id, PDO::PARAM_INT);
 		$query->bindValue(':reason', $reason, PDO::PARAM_STR);
 		$query->execute() or error(db_error($query));
+		if (function_exists('imgboard_notify_item')) { imgboard_notify_item('report', '/mod.php?/reports'); }
 	}
 
 	$is_mod = isset($_POST['mod']) && $_POST['mod'];
@@ -735,7 +736,7 @@ if (isset($_POST['delete'])) {
 			}
 		}
 
-		// Imgboard: Cloudflare Turnstile — required to start a NEW THREAD only
+		// Imgboard: Cloudflare Turnstile - required to start a NEW THREAD only
 		// (not for replies). Enabled when both Turnstile keys are configured.
 		if ($post['op'] && empty($_POST['mod'])
 				&& function_exists('imgboard_turnstile_enabled') && imgboard_turnstile_enabled()) {
@@ -1052,7 +1053,7 @@ if (isset($_POST['delete'])) {
 	if (!$dropped_post)
 	if (($config['country_flags'] && !$config['allow_no_country']) || ($config['country_flags'] && $config['allow_no_country'] && !isset($_POST['no_country']))) {
 		// example.com sits behind Cloudflare, which stamps the client's country
-		// in the CF-IPCountry header — use that instead of a GeoIP database.
+		// in the CF-IPCountry header - use that instead of a GeoIP database.
 		$country_code = strtolower($_SERVER['HTTP_CF_IPCOUNTRY'] ?? '');
 		// Skip Cloudflare's non-country / unknown codes.
 		if ($country_code !== '' && !in_array($country_code, array('eu', 'ap', 'o1', 'a1', 'a2', 'xx', 't1'))) {
@@ -1627,6 +1628,7 @@ if (isset($_POST['delete'])) {
 	$query->bindValue(':time', time(), PDO::PARAM_INT);
 	$query->bindValue(':message', $_POST['appeal']);
 	$query->execute() or error(db_error($query));
+	if (function_exists('imgboard_notify_item')) { imgboard_notify_item('ban appeal', '/mod.php?/ban-appeals'); }
 
 	displayBan($ban);
 } else {

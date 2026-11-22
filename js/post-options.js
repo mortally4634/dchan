@@ -1,8 +1,8 @@
 /*
- * post-options.js — example.com
+ * post-options.js - example.com
  *
  * A "Select" row at the top of the post form's upload area, styled like 4chan's
- * selector: one tab per upload method, slash-separated —
+ * selector: one tab per upload method, slash-separated -
  *     Select   File / Embed / Tegaki / Poll
  * Picking a tab shows that method and hides the others; File (the dropzone
  * uploader) is the default. Oekaki opens the Tegaki applet, whose drawing lands

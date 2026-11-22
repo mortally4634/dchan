@@ -1,6 +1,6 @@
 <?php
 /*
- * poll.php — example.com
+ * poll.php - example.com
  *
  * Serves the embedded poll iframe (vote form + results) for the poll system.
  * Ported from soyjakparty and adapted to IP-only voting (no pass/VPN system).

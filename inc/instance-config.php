@@ -42,26 +42,26 @@
 
 	// Tiered identifier visibility in the mod post view (templates/post/ip.html)
 	// and the ?/fp/ detail page. Linear permission model (type >= level):
-	//   fp_raw      (Admin, 30)    — full un-hashed fingerprint signal breakdown
-	//   show_ip     (Mod, 20)      — real IP + HWID + cookie + fp hash + ALT flag
+	//   fp_raw      (Admin, 30)    - full un-hashed fingerprint signal breakdown
+	//   show_ip     (Mod, 20)      - real IP + HWID + cookie + fp hash + ALT flag
 	//                                (set in config.php) plus a bare-bones ?/fp/ page
-	//   fp_hashed   (Janitor, 10)  — only an opaque hashed poster number
-	//   fp_ip_token (Mediator, 5)  — only a super-hashed IP token, nothing else
+	//   fp_hashed   (Janitor, 10)  - only an opaque hashed poster number
+	//   fp_ip_token (Mediator, 5)  - only a super-hashed IP token, nothing else
 	$config['mod']['fp_raw']      = 30; // Admin
 	$config['mod']['fp_hashed']   = 10; // Janitor
 	$config['mod']['fp_ip_token'] = 5;  // Mediator
 	// Bulk visitor fingerprint data (the ?/fingerprints list + .zip export of
-	// every visitor's fingerprint .txt). Manager+ only — one tier above Admin.
+	// every visitor's fingerprint .txt). Manager+ only - one tier above Admin.
 	$config['mod']['fp_data']     = 35; // Manager
 
 	// Janitors moderate directly with the full delete + ban control suite
 	// ([D] [D+] [D++] [B] [B&D] [B&D+] [B&D++]). Mediators (5) still only propose.
 	// Set here (re-runs on every loadConfig) so it survives the openBoard reload.
-	$config['mod']['delete']            = 10; // JANITOR — [D]
-	$config['mod']['deletebyip']        = 10; // JANITOR — [D+]  / [B&D+]
-	$config['mod']['deletebyip_global'] = 10; // JANITOR — [D++] / [B&D++]
-	$config['mod']['ban']               = 10; // JANITOR — [B]
-	$config['mod']['bandelete']         = 10; // JANITOR — [B&D]
+	$config['mod']['delete']            = 10; // JANITOR - [D]
+	$config['mod']['deletebyip']        = 10; // JANITOR - [D+]  / [B&D+]
+	$config['mod']['deletebyip_global'] = 10; // JANITOR - [D++] / [B&D++]
+	$config['mod']['ban']               = 10; // JANITOR - [B]
+	$config['mod']['bandelete']         = 10; // JANITOR - [B&D]
 
 	// DTEG (Device Tracking & Entropy Gathering): client browser fingerprinting.
 	// Runs on every board/thread/index page, stamps a stable hash on posts
@@ -101,7 +101,7 @@
 	// Ctrl+Enter in a post form submits the post.
 	$config['additional_javascript'][] = 'js/ctrl-enter-post.js';
 
-	// Enable URL embedding (YouTube / Vimeo / Dailymotion / Rumble, etc. — the
+	// Enable URL embedding (YouTube / Vimeo / Dailymotion / Rumble, etc. - the
 	// providers are defined in config.php) so the post form's Select row offers
 	// an "Embed" option alongside File / Oekaki / Poll.
 	$config['enable_embedding'] = true;
@@ -155,8 +155,8 @@
 	$config['mod']['custom_pages']['/viewas/(off|user|\d+)']                    = 'imgboard_viewas';
 
 	// Post Pending approval (PPA): hold non-staff posts for approval when on.
-	//   ppa_toggle  (Admin/Root) — turn the system on/off
-	//   ppa_approve (Mediator+)  — view the queue, approve/reject held posts (all boards the
+	//   ppa_toggle  (Admin/Root) - turn the system on/off
+	//   ppa_approve (Mediator+)  - view the queue, approve/reject held posts (all boards the
 	//                              account is assigned; Mediator accounts should have boards '*')
 	$config['mod']['ppa_toggle']  = 30;
 	$config['mod']['ppa_approve'] = 5;
@@ -232,7 +232,7 @@
 	require_once __DIR__ . '/mod/pending.php';
 
 	// Apply per-board name overrides (default name / name field). This runs on
-	// every loadConfig — including the openBoard reload, when $board is set —
+	// every loadConfig - including the openBoard reload, when $board is set -
 	// whereas pending.php itself is require_once'd and skipped on that reload.
 	imgboard_apply_board_overrides();
 

@@ -9,7 +9,7 @@
  *   - window + navigator property enumeration (extensions/tools leak as globals)
  *   - WebGPU adapter info
  *   - WebRTC IP discovery (host/local IPs always; the srflx candidate exposes the
- *     real public IP behind a VPN/proxy — this makes ONE outbound STUN request to
+ *     real public IP behind a VPN/proxy - this makes ONE outbound STUN request to
  *     stun.l.google.com, the only non-silent probe in DTEG)
  *   - best-effort installed-extension detection (loads a few known extension
  *     resources; a resolvable load means that extension is present)
@@ -214,7 +214,7 @@
 	// High-entropy User-Agent Client Hints: the detailed platform / CPU / model /
 	// full browser-version data the UA string hides. Silent (no prompt); Chromium
 	// only. dteg-collect deliberately took only the LOW-entropy hints to stay quiet
-	// — this adds the full detail on purpose ("rawest data").
+	// - this adds the full detail on purpose ("rawest data").
 	function clientHintsSignals() {
 		return new Promise(function (resolve) {
 			var o = {};
@@ -257,7 +257,7 @@
 	}
 
 	// Media devices: how many cameras / microphones / speakers and how many device
-	// groups, plus labels IF a permission is already granted (otherwise blank — that
+	// groups, plus labels IF a permission is already granted (otherwise blank - that
 	// blankness is itself a signal). enumerateDevices needs no prompt.
 	function mediaDeviceSignals() {
 		return new Promise(function (resolve) {

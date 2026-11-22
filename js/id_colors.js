@@ -39,7 +39,7 @@ if (active_page == 'thread' || active_page == 'index') {
 
 		function colorPostId(el) {
 			// Use only the hex id itself. A normal ID's text is pure hex ("22ec5"),
-			// but a Staff ID reads "SID 22ec5" — take the last whitespace-separated
+			// but a Staff ID reads "SID 22ec5" - take the last whitespace-separated
 			// token so both color the same way instead of the SID parsing to NaN.
 			var id_hex = $(el).text().trim().split(/\s+/).pop();
 			var rgb = IDToRGB(id_hex);

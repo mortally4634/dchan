@@ -4,7 +4,7 @@
  *  ---------------
  *  The example.com front page renderer, shared by:
  *    - index.php        (the public homepage at /)
- *    - the mod ?/ route (mod.php?/ — the same page, but with the mod bar and
+ *    - the mod ?/ route (mod.php?/ - the same page, but with the mod bar and
  *      mod-only features, so a logged-in mod lands on the homepage while
  *      keeping mod.php in the URL)
  *

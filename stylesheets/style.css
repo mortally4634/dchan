@@ -1398,13 +1398,13 @@ div.mix {
 }
 
 /* =====================================================================
- * example.com feature styles — layered on the soyjak.st base theme.
+ * example.com feature styles - layered on the soyjak.st base theme.
  * Board-list styling is intentionally omitted so the base controls it.
  * ===================================================================== */
 /* Imgboard: user Options behaviours driven by a <body> class.
    All client-side and reversible; server render is unaffected. */
 
-/* General: Strip filenames — hide the poster-supplied original filename. */
+/* General: Strip filenames - hide the poster-supplied original filename. */
 .strip-filenames .sfn-link,
 .strip-filenames .sfn-sep {
   display: none;
@@ -1493,7 +1493,7 @@ div.mix {
   text-decoration: underline;
 }
 
-/* Visual (WYSIWYG) editor — replaces raw-HTML source textareas. */
+/* Visual (WYSIWYG) editor - replaces raw-HTML source textareas. */
 .wysiwyg {
   margin: 0 auto;
   border: 1px solid #4a4a4a;
@@ -1916,7 +1916,7 @@ div.mix {
   cursor: pointer;
 }
 
-/* Toastify (js/toastify.js) — non-blocking toast notifications. */
+/* Toastify (js/toastify.js) - non-blocking toast notifications. */
 .toastify {
   position: fixed;
   max-width: calc(50% - 20px);

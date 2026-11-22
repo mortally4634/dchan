@@ -1,13 +1,13 @@
 <?php
 /*
- * captcha.php — example.com no-JS captcha (dynamic image endpoint)
+ * captcha.php - example.com no-JS captcha (dynamic image endpoint)
  *
  * GET /captcha.php renders a GD PNG of a short random code, stores the answer
  * in the shared `captchas` table keyed by a cookie it sets (imgboard_captcha_id),
  * and streams the image with no-store headers. The post form embeds
  * <img src="/captcha.php"> plus a text field; post.php verifies the typed code
  * against the stored answer and consumes it (one-shot). No JavaScript and no
- * third-party service — the challenge is a rasterised image, so the answer is
+ * third-party service - the challenge is a rasterised image, so the answer is
  * never present in the page markup.
  *
  * (The bundled vichan captchas are unusable here: inc/captcha/entrypoint.php is

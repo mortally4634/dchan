@@ -21,7 +21,7 @@
 			</tr>
 			{% for b in boards %}
 				<tr>
-					<td>/{{ b.uri }}/ &mdash; {{ b.title|e }}</td>
+					<td>/{{ b.uri }}/ - {{ b.title|e }}</td>
 					<td style="text-align:center;">
 						<input type="checkbox" name="name_field_{{ b.uri }}" value="1"{% if b.name_field %} checked{% endif %}>
 					</td>

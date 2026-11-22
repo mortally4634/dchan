@@ -12,7 +12,7 @@
 					 - 
 				{{ board.title|e }}
 				{% if board.subtitle %}
-					<small>&mdash;
+					<small>-
 						{% if config.allow_subtitle_html %}
 							{{ board.subtitle }}
 						{% else %}
@@ -39,7 +39,7 @@
 			<a href="?/overboard">/o/</a>
 				 -
 			{% trans 'Overboard' %}
-			<small>&mdash; all boards in one</small>
+			<small>- all boards in one</small>
 			{% if mod|hasPermission(config.mod.themes) %}
 				 <a href="?/themes/ukko"><small>[{% trans 'edit' %}]</small></a>
 			{% endif %}
@@ -67,7 +67,7 @@
 							   gaps would collapse the words together. #}
 							<li>
 								<a href="?/noticeboard#{{ post.id }}">{% if post.subject %}{{ post.subject|e }}{% else %}<em>{% trans 'no subject' %}</em>{% endif %}</a>
-								<small class="unimportant"> &mdash; by {% if post.username %}{{ post.username|e }}{% else %}<em>deleted?</em>{% endif %} at {{ post.time|date(config.post_date) }}</small>
+								<small class="unimportant"> - by {% if post.username %}{{ post.username|e }}{% else %}<em>deleted?</em>{% endif %} at {{ post.time|date(config.post_date) }}</small>
 							</li>
 						{% endfor %}
 					</ul>
@@ -95,7 +95,7 @@
 				Post Pending approval &middot; <a href="?/pending">pending posts ({{ imgboard_ppa_count() }})</a>
 				{% set ppa_on = [] %}
 				{% for b in boards %}{% if imgboard_ppa_enabled(b.uri) %}{% set ppa_on = ppa_on|merge(['/' ~ b.uri ~ '/']) %}{% endif %}{% endfor %}
-				<br><span class="unimportant">Holding: {% if ppa_on %}{{ ppa_on|join(' ') }}{% else %}no boards{% endif %} &mdash; set this on each board's edit page.</span>
+				<br><span class="unimportant">Holding: {% if ppa_on %}{{ ppa_on|join(' ') }}{% else %}no boards{% endif %} - set this on each board's edit page.</span>
 			</li>
 		{% endif %}
 		{% if mod|hasPermission(config.mod.reports) %}

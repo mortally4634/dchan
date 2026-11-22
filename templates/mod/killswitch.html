@@ -1,7 +1,7 @@
 {% set active = (kind == 'jsid' and mode == 'jsid') or (kind == 'temp' and mode == 'temp') %}
 <div style="text-align:center; padding:20px; max-width:640px; margin:0 auto;">
 	<h2 style="color:#c0392b;">
-		{% if kind == 'jsid' %}JSID &mdash; full shutdown{% else %}Temp-JSID &mdash; temporary shutdown{% endif %}
+		{% if kind == 'jsid' %}JSID - full shutdown{% else %}Temp-JSID - temporary shutdown{% endif %}
 	</h2>
 
 	{% if active %}
@@ -15,7 +15,7 @@
 	{% else %}
 		<p>The site is live.
 		{% if kind == 'jsid' %}
-			Activating JSID takes the whole site down for everyone &mdash; only you (Owner) can bring it back.
+			Activating JSID takes the whole site down for everyone - only you (Owner) can bring it back.
 		{% else %}
 			Activating Temp-JSID takes the site down temporarily; any admin can turn it on or off.
 		{% endif %}</p>

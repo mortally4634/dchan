@@ -14,7 +14,7 @@
  *   dteg-detect.js    headless/automation battery, CPU benchmark, WebRTC IP
  *                     discovery, WebGPU, window/navigator property dump,
  *                     best-effort extension detection.
- *   dteg-behavior.js  input cadence (keystroke/mouse TIMING only — never which
+ *   dteg-behavior.js  input cadence (keystroke/mouse TIMING only - never which
  *                     keys are pressed or any field value), for bot detection.
  *
  * This core stays silent and passive (no permission prompts / indicators); the
@@ -665,7 +665,7 @@
 
 		// Extra collectors registered by the other dteg-*.js files (headless,
 		// cpu, props are sync; webrtc/webgpu/extensions/permissions are async and
-		// can take a couple of seconds — not part of the stable hash).
+		// can take a couple of seconds - not part of the stable hash).
 		var slowJobs = [];
 		for (var i = 0; i < EXTRA.length; i++) {
 			(function (ex) {

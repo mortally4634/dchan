@@ -77,7 +77,7 @@ function createBoardlist($mod=false) {
 		$navboards = $nav . ' ' . $boards;
 	}
 
-	// Group 3: moderator links — only when a mod is logged in. Staff boards come
+	// Group 3: moderator links - only when a mod is logged in. Staff boards come
 	// first (bare names), then the dashboard + combined pending count. The whole
 	// group is slash-separated to match the public board group's formatting.
 	$modnav = '';

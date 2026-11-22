@@ -319,7 +319,7 @@ function check_login(Context $ctx, bool $prompt = false): void {
 
 		// example.com "view as a lower role": preview the site as a rank below
 		// your own. The imgboard_viewas cookie ONLY lowers the effective type and
-		// never raises it, so it grants no power — a forged value can at most
+		// never raises it, so it grants no power - a forged value can at most
 		// reduce the viewer's own access. real_type keeps the true rank for the
 		// dashboard control and the lower-role links.
 		$mod['real_type'] = $mod['type'];

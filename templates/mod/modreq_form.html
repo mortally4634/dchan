@@ -4,7 +4,7 @@
 		<p>
 			You are proposing to <strong>{{ action == 'ban' ? 'ban the poster of' : 'delete' }}</strong>
 			post <code>/{{ board }}/ #{{ post_id }}</code>.
-			This does not {{ action == 'ban' ? 'ban' : 'delete' }} anything by itself &mdash;
+			This does not {{ action == 'ban' ? 'ban' : 'delete' }} anything by itself -
 			it files a request for a Janitor or higher to approve.
 		</p>
 
@@ -19,7 +19,7 @@
 					{% set _rules = imgboard_rules_list() %}
 					{% if _rules %}
 						<select onchange="imgboardFillRule(this,'modreq_reason')" style="display:block;margin-bottom:4px;max-width:360px;">
-							<option value="">&mdash; cite a rule (rules.php) &mdash;</option>
+							<option value="">- cite a rule (rules.php) -</option>
 							{% for r in _rules %}<option value="Rule {{ r.n }}: {{ r.text|e }}">{{ r.n }}. {{ r.text|slice(0,70)|e }}{% if r.text|length > 70 %}&hellip;{% endif %}</option>{% endfor %}
 						</select>
 						<script>

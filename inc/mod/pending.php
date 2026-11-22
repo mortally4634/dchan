@@ -14,8 +14,8 @@
  *
  *  Permissions (from instance-config):
  *    approve_files / approve_links : Mods + Admins (MOD, 20)
- *    edit_blocklists               : Mods + Admins (MOD, 20) — add/approve/delete
- *    suggest_blocklists            : Janitors (JANITOR, 10) — suggest only
+ *    edit_blocklists               : Mods + Admins (MOD, 20) - add/approve/delete
+ *    suggest_blocklists            : Janitors (JANITOR, 10) - suggest only
  */
 
 use Vichan\Context;
@@ -58,9 +58,9 @@ $config['twig_auto_reload'] = true;
 // MPA (Media Pending Approval) + LPA (Link Pending Approval): the two halves of
 // the /pending queue. Open to Mediator (5) and up so that role can work the
 // queues. NOTE: because hasPermission is a linear threshold, lowering these to 5
-// also grants them to Janitors (10) — an unavoidable consequence of the model.
-$config['mod']['approve_files']      = 5;   // MPA — Mediator + up
-$config['mod']['approve_links']      = 5;   // LPA — Mediator + up
+// also grants them to Janitors (10) - an unavoidable consequence of the model.
+$config['mod']['approve_files']      = 5;   // MPA - Mediator + up
+$config['mod']['approve_links']      = 5;   // LPA - Mediator + up
 // Mediators may read the noticeboard (posting stays Mod+, deleting Admin+).
 $config['mod']['noticeboard']        = 5;
 $config['mod']['edit_blocklists']    = 20;  // Mods + Admins
@@ -93,7 +93,7 @@ $config['mod']['custom_pages']['/mod-requests/approve/(\d+)'] = 'secure modreq_a
 $config['mod']['custom_pages']['/mod-requests/deny/(\d+)']    = 'secure modreq_deny';
 
 // (Thread URLs /board/thread/… and the live auto-update JS are set in
-//  inc/config.php, which re-runs on every loadConfig — see the note there.)
+//  inc/config.php, which re-runs on every loadConfig - see the note there.)
 
 // Admin-editable site pages (rules / news), edited from the homepage/pages.
 $config['mod']['edit_pages_content'] = 30;  // Admins only
@@ -176,8 +176,8 @@ function imgboard_mod_boards(): array {
 
 // Pull the external links out of a post body for the staff link preview and the
 // "Reject + ban link" action. A post is flagged pending-link when its rendered
-// body contains an external anchor (rel="nofollow"), so prefer those hrefs — the
-// exact links vichan recognised — and fall back to bare http(s):// URLs in text.
+// body contains an external anchor (rel="nofollow"), so prefer those hrefs - the
+// exact links vichan recognised - and fall back to bare http(s):// URLs in text.
 function imgboard_extract_links(string $text): array {
 	$out = [];
 	// External hyperlinks in the rendered markup: <a ... rel="nofollow" ... href="URL">
@@ -320,7 +320,7 @@ function mod_approve_link(Context $ctx, $board, $post) {
 }
 
 /* ----------------------------------------------------------------------- *
- *  Combined pending queue (/pending) — files + links in one page.
+ *  Combined pending queue (/pending) - files + links in one page.
  *  Shows whichever sections the current mod may act on.
  * ----------------------------------------------------------------------- */
 
@@ -499,7 +499,7 @@ function imgboard_topbar_catalog(string $root, $mod = false): array {
 	$cat['bans']      = ['type' => 'nav', 'label' => 'bans',      'html' => '<a href="' . $bans_href . '">bans</a>'];
 	$cat['search']    = ['type' => 'nav', 'label' => 'search',    'html' => '<a href="' . $root . 'search.php">search</a>'];
 	$cat['overboard'] = ['type' => 'nav', 'label' => 'overboard', 'html' => '<a href="' . $overboard_href . '">overboard</a>'];
-	$cat['sep']       = ['type' => 'sep', 'label' => '— group break —', 'html' => ''];
+	$cat['sep']       = ['type' => 'sep', 'label' => '- group break -', 'html' => ''];
 
 	foreach (listBoards() as $b) {
 		if (function_exists('imgboard_is_staff_board') && imgboard_is_staff_board($b['uri'])) {
@@ -629,7 +629,7 @@ function mod_topbar_edit(Context $ctx) {
 		if (!is_array($order)) {
 			$order = [];
 		}
-		// Keep only known tokens, de-duplicated, in the submitted order — except
+		// Keep only known tokens, de-duplicated, in the submitted order - except
 		// group breaks ('sep'), which may appear as many times as the admin wants.
 		$clean = [];
 		foreach ($order as $t) {
@@ -843,7 +843,7 @@ function mod_reject_link_ban(Context $ctx, $board, $post)     { imgboard_reject(
  *
  *  A Mediator cannot delete or ban directly. Instead they file a *request*
  *  (a "vote") that lands in the /mod-requests queue, where a Janitor or higher
- *  approves or denies it. Approving executes the action — delete the post, or
+ *  approves or denies it. Approving executes the action - delete the post, or
  *  ban the poster's IP (the ban is attributed to the approver). Requests live
  *  in the mod_action_requests table.
  * ----------------------------------------------------------------------- */
@@ -908,7 +908,7 @@ function imgboard_vote(Context $ctx, string $board, $post, string $action) {
 
 	if (isset($_POST['reason'])) {
 		imgboard_modreq_table();
-		// One open request per (board, post, action, requester) — ignore repeats.
+		// One open request per (board, post, action, requester) - ignore repeats.
 		$dup = prepare("SELECT `id` FROM ``mod_action_requests`` WHERE `board` = :b AND `post_id` = :p AND `action` = :a AND `requested_by` = :u AND `status` = 'pending'");
 		$dup->bindValue(':b', $board);
 		$dup->bindValue(':p', $post, PDO::PARAM_INT);
@@ -926,6 +926,7 @@ function imgboard_vote(Context $ctx, string $board, $post, string $action) {
 			$ins->bindValue(':t', time(), PDO::PARAM_INT);
 			$ins->execute() or error(db_error($ins));
 			modLog(($action === 'ban' ? 'Proposed a ban for' : 'Proposed deletion of') . " post #{$post}", $board);
+			if (function_exists('imgboard_notify_item')) { imgboard_notify_item('mod request', '/mod.php?/mod-requests'); }
 		}
 		header('Location: ?/' . sprintf($config['board_path'], $board) . $config['file_index'], true, $config['redirect_http']);
 		return;
@@ -1378,7 +1379,7 @@ const IMGBOARD_DEFAULT_NEWS = '<p>No news to show.</p>';
 // them if the site changes (what is collected, who it is shared with).
 // NOTE: this is protective boilerplate, NOT legal advice. Before you launch, set a real
 // [jurisdiction] in the Governing law clause, replace example.com, and have a lawyer review
-// it for your country and host — liability waivers are not enforceable everywhere.
+// it for your country and host - liability waivers are not enforceable everywhere.
 const IMGBOARD_DEFAULT_TOS = <<<'HTML'
 <p class="unimportant">Last updated: November 2026</p>
 <p>By accessing or using example.com (including its Tor and I2P mirrors) you agree to these Terms and to the <a href="/rules.php">Rules</a>, which are incorporated by reference. If you do not agree, do not use the site.</p>
@@ -1530,7 +1531,7 @@ function imgboard_sanitize_html(string $html): string {
 
 // Public News page. News is managed through vichan's NATIVE news system
 // (?/edit_news, the ``news`` table), so this renders those entries and points
-// the Edit link there — not at the custom settings store.
+// the Edit link there - not at the custom settings store.
 function imgboard_render_news_page(bool $as_mod = false) {
 	global $config, $mod;
 
@@ -1675,7 +1676,7 @@ function imgboard_apply_board_overrides(): void {
 			$config['poster_ids']  = true;
 		}
 	} catch (\Throwable $e) {
-		// DB not ready during an early config load — keep the global defaults.
+		// DB not ready during an early config load - keep the global defaults.
 	}
 }
 
@@ -1794,7 +1795,7 @@ function mod_temp_jsid(Context $ctx) {
 }
 
 /* ----------------------------------------------------------------------- *
- *  Schizo — nuclear site reset
+ *  Schizo - nuclear site reset
  *
  *  Deletes every board except /meta/ and fires all mods (deletes every mod
  *  account except admin). Owner's alone, exactly like JSID. GET shows a typed
@@ -1890,7 +1891,7 @@ function imgboard_schizo_reset($cache): void {
 function mod_schizo(Context $ctx) {
 	global $mod, $config;
 
-	// Schizo is open to Manager (35) and Root (40) — see $config['mod']['schizo'].
+	// Schizo is open to Manager (35) and Root (40) - see $config['mod']['schizo'].
 	if (!$mod || !hasPermission($config['mod']['schizo'] ?? 35)) {
 		error($config['error']['noaccess']);
 	}
@@ -1898,7 +1899,7 @@ function mod_schizo(Context $ctx) {
 	if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 		// Second gate on top of the CSRF token: the typed phrase must match.
 		if (($_POST['confirm'] ?? '') !== 'SCHIZO') {
-			error('Reset not confirmed — type SCHIZO exactly to proceed.');
+			error('Reset not confirmed - type SCHIZO exactly to proceed.');
 		}
 		imgboard_schizo_reset($ctx->get(\Vichan\Data\Driver\CacheDriver::class));
 		header('Location: ?/dashboard', true, $config['redirect_http']);
@@ -1911,7 +1912,7 @@ function mod_schizo(Context $ctx) {
 }
 
 /* ----------------------------------------------------------------------- *
- *  CattyWipe — per-board wipe that keeps only stickied threads
+ *  CattyWipe - per-board wipe that keeps only stickied threads
  * ----------------------------------------------------------------------- */
 
 function imgboard_cattywipe($board): void {
@@ -2556,7 +2557,7 @@ function imgboard_fp_flatten($value): string {
 
 // "View as a lower role": set or clear the imgboard_viewas cookie. The cookie is
 // only ever honoured when it names a rank strictly below the viewer's real one
-// (see check_login), so this can never escalate — only preview downward.
+// (see check_login), so this can never escalate - only preview downward.
 function mod_imgboard_viewas(Context $ctx, $to) {
 	global $mod, $config;
 	if (!$mod) error($config['error']['noaccess']);
@@ -2652,7 +2653,7 @@ function mod_imgboard_fp_view(Context $ctx, $hash) {
 
 	$latest = $rows[0];
 
-	// Distinct identifiers seen with this fingerprint — the bridge back to past
+	// Distinct identifiers seen with this fingerprint - the bridge back to past
 	// posts: each cookie id / hwid links to a post search.
 	$cookie_ids = []; $hwids = []; $ips = [];
 	foreach ($rows as $r) {
@@ -2790,7 +2791,7 @@ function mod_home(Context $ctx) {
 }
 
 /* ----------------------------------------------------------------------- *
- *  User fingerprint data (?/fingerprints)  — Manager+ (config.mod.fp_data)
+ *  User fingerprint data (?/fingerprints)  - Manager+ (config.mod.fp_data)
  *
  *  Every visitor the fingerprint store has seen: posters AND lurkers, since
  *  DTEG (js/dteg/) records a sighting on page load. The list shows one row per
@@ -2799,10 +2800,10 @@ function mod_home(Context $ctx) {
  *  ships a .zip of one formatted .txt per visitor.
  * ----------------------------------------------------------------------- */
 
-// Self-contained plain-text fingerprint report for one hash — same layout as
+// Self-contained plain-text fingerprint report for one hash - same layout as
 // the ?/fp/<hash>&format=txt download. Returns null if the hash is unknown.
 // Network classification for a sighting IP: Tor / I2P (from the hidden-service
-// pseudo-IP prefix) or VPN/Proxy / clear (from the proxycheck.io cache ONLY — a
+// pseudo-IP prefix) or VPN/Proxy / clear (from the proxycheck.io cache ONLY - a
 // fresh lookup is never fired here, so exporting every fingerprint stays cheap and
 // never floods proxycheck; an IP never checked at post time shows 'unknown').
 function imgboard_fp_network(?string $ip): string {
@@ -3067,7 +3068,7 @@ function mod_imgboard_fp_zip(Context $ctx) {
 		imgboard_setting_get('fp_label', 'DTEG') . " user fingerprint export\n" .
 		"Generated: " . gmdate('Y-m-d H:i') . " UTC by " . $role_name . "\n" .
 		"Visitors:  " . $count . "\n" .
-		"One .txt per device fingerprint (stable_hash) — posters and lurkers alike.\n");
+		"One .txt per device fingerprint (stable_hash) - posters and lurkers alike.\n");
 	$zip->close();
 
 	modLog('Downloaded all user fingerprint data (' . $count . ' visitors, zip)');
@@ -3135,7 +3136,7 @@ function imgboard_ppa_count(): int {
 
 // Called from post.php right before the post would be inserted. Stashes the
 // fully-prepared post (its files are already on disk) and shows the poster an
-// "awaiting approval" page, then stops — the post is never inserted or built.
+// "awaiting approval" page, then stops - the post is never inserted or built.
 function imgboard_ppa_hold(string $board_uri, array $post): void {
 	global $config;
 	imgboard_ppa_table();
@@ -3286,9 +3287,17 @@ function mod_ppa_reject(Context $ctx, $id) {
 // Total items in the approval queue the current mod can act on (pending files + links +
 // held posts). Drives the title badge and the "N awaiting approval" notification.
 function imgboard_notify_count(): int {
+	global $mod, $config;
 	$n = 0;
 	if (function_exists('imgboard_pending_count')) { $n += imgboard_pending_count('files') + imgboard_pending_count('links'); }
 	if (function_exists('imgboard_ppa_count')) { $n += imgboard_ppa_count(); }
+	if ($mod && hasPermission($config['mod']['reports'] ?? 10)) {
+		try { if ($q = query("SELECT COUNT(*) FROM ``reports``")) { $n += (int)$q->fetchColumn(); } } catch (\Throwable $e) {}
+	}
+	if (function_exists('imgboard_modreq_count')) { $n += imgboard_modreq_count(); } // 0 for roles that can't approve
+	if ($mod && !empty($config['ban_appeals']) && hasPermission($config['mod']['view_ban_appeals'] ?? 20)) {
+		try { if ($q = query("SELECT COUNT(*) FROM ``ban_appeals``")) { $n += (int)$q->fetchColumn(); } } catch (\Throwable $e) {}
+	}
 	return $n;
 }
 
@@ -3411,4 +3420,10 @@ function imgboard_notify_pending(string $board = ''): void {
 		'A post' . ($board !== '' ? ' on /' . $board . '/' : '') . ' is in the approval queue.',
 		'/mod.php?/pending'
 	);
+}
+
+// Offline-push notify for a non-approval queue item (report / mod request / ban appeal).
+// Online tabs see it through the ?/notify-poll count; this reaches closed browsers.
+function imgboard_notify_item(string $what, string $url): void {
+	imgboard_push_send('New ' . $what, 'A new ' . $what . ' is waiting in the queue.', $url);
 }
