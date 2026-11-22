@@ -8,6 +8,4 @@ All work.
 
 ## Reporting a Vulnerability
 
-Email contact@example.com to report a vulnerability.
-
-<!-- TODO: replace contact@example.com with your own contact info. -->
+Email nukoma@proton.me to report a vulnerability.
