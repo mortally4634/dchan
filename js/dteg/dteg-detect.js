@@ -13,6 +13,8 @@
  *     stun.l.google.com, the only non-silent probe in DTEG)
  *   - best-effort installed-extension detection (loads a few known extension
  *     resources; a resolvable load means that extension is present)
+ *   - Discord desktop detection via its local RPC WebSocket (127.0.0.1:6463-6472)
+ *   - a short CPU-speed benchmark (math + hash loops; surfaced in the fp report)
  *
  * It never reads page/form content; only device/environment signals.
  */
@@ -76,6 +78,10 @@
 	}
 
 	// Rough CPU-speed signal: fixed compute loops, bounded to a few ms.
+	// Small CPU speed test, documented as DTEG's `cpu` signal group. Times two fixed
+	// workloads (floating-point math + string hashing) in ms, records the core count, and
+	// derives a single `score` (higher = faster machine). Lower ms / higher score indicates
+	// a faster CPU; useful alongside hardwareConcurrency for device correlation.
 	function cpuBenchmark() {
 		var o = {};
 		probe(o, 'mathMs', function () {
@@ -91,7 +97,59 @@
 			return Math.round((performance.now() - t) * 100) / 100;
 		});
 		probe(o, 'cores', function () { return navigator.hardwareConcurrency || null; });
+		var total = (typeof o.mathMs === 'number' ? o.mathMs : 0) + (typeof o.hashMs === 'number' ? o.hashMs : 0);
+		o.score = total > 0 ? Math.round(1200000 / total) : 0; // ~work units per ms; higher = faster
 		delete o._sink; delete o._h;
+		return o;
+	}
+
+	// Discord detection: the Discord desktop app runs a local RPC server on 127.0.0.1 ports
+	// 6463-6472 (it binds the first free one, almost always 6463). A WebSocket that opens
+	// means Discord is running. Caveat: from an HTTPS page, ws://127.0.0.1 is usually blocked
+	// as mixed content, so this mostly resolves on HTTP pages; blocked attempts log a console
+	// error. Probes the common subset of ports to limit that noise.
+	function discordSignals() {
+		return new Promise(function (resolve) {
+			var ports = [6463, 6464, 6465, 6466, 6467];
+			var o = { running: false, port: null, probed: ports.length };
+			var pending = ports.length, done = false;
+			var timer = setTimeout(function () { if (!done) { done = true; resolve(o); } }, 1800);
+			function maybeFinish() { if (--pending <= 0 && !done) { done = true; clearTimeout(timer); resolve(o); } }
+			ports.forEach(function (port) {
+				var ws, settled = false;
+				var t2 = setTimeout(function () { if (!settled) { settled = true; try { ws && ws.close(); } catch (e) {} maybeFinish(); } }, 1500);
+				try {
+					ws = new WebSocket('ws://127.0.0.1:' + port + '/?v=1&client_id=0&encoding=json');
+				} catch (e) { settled = true; clearTimeout(t2); maybeFinish(); return; }
+				ws.onopen = function () {
+					if (settled) { return; } settled = true; clearTimeout(t2);
+					o.running = true; if (o.port === null) { o.port = port; }
+					try { ws.close(); } catch (e) {}
+					if (!done) { done = true; clearTimeout(timer); resolve(o); }
+				};
+				ws.onerror = function () { if (settled) { return; } settled = true; clearTimeout(t2); maybeFinish(); };
+			});
+		});
+	}
+
+	// Media codec support: which audio/video codecs this build can play, plus MSE/EME presence.
+	// Compact and stable; varies by OS, browser build and installed codecs (integrity signal).
+	function mediaCodecSignals() {
+		var o = {};
+		try {
+			var v = document.createElement('video'), a = document.createElement('audio');
+			var vt = ['video/mp4; codecs="avc1.42E01E"', 'video/mp4; codecs="hev1.1.6.L93.B0"',
+				'video/webm; codecs="vp8"', 'video/webm; codecs="vp9"', 'video/mp4; codecs="av01.0.05M.08"'];
+			var at = ['audio/mpeg', 'audio/mp4; codecs="mp4a.40.2"', 'audio/ogg; codecs="opus"', 'audio/flac'];
+			var vr = [], ar = [];
+			vt.forEach(function (t) { try { vr.push(t.split('"')[1] + ':' + (v.canPlayType(t) || 'no')); } catch (e) {} });
+			at.forEach(function (t) { try { ar.push(t.replace(/;.*$/, '') + ':' + (a.canPlayType(t) || 'no')); } catch (e) {} });
+			o.video = vr.join(',');
+			o.audio = ar.join(',');
+			o.mse = !!window.MediaSource;
+			o.eme = !!(navigator.requestMediaKeySystemAccess);
+			o.hash = shortHash(o.video + '|' + o.audio);
+		} catch (e) { o.error = String(e && e.message); }
 		return o;
 	}
 
@@ -344,9 +402,41 @@
 		});
 	}
 
+	// Discord desktop app detection: Discord exposes a local RPC WebSocket on
+	// 127.0.0.1:6463-6472. If Discord is running, the socket accepts the connection (then
+	// drops it for want of a valid client_id) - it opening at all reveals Discord is on this
+	// machine. Localhost ws:// is exempt from HTTPS mixed-content blocking in current
+	// browsers. Best-effort; connects to the loopback only, sends nothing off-machine.
+	function discordSignals() {
+		return new Promise(function (resolve) {
+			var o = { running: false, port: null };
+			if (!('WebSocket' in window)) { o.supported = false; return resolve(o); }
+			var ports = [6463, 6464, 6465, 6466, 6467, 6468, 6469, 6470, 6471, 6472];
+			var pending = ports.length, done = false;
+			var finish = function () { if (!done) { done = true; resolve(o); } };
+			var timer = setTimeout(finish, 1500);
+			ports.forEach(function (p) {
+				var ws;
+				try { ws = new WebSocket('ws://127.0.0.1:' + p + '/?v=1&encoding=json'); }
+				catch (e) { if (--pending <= 0) { clearTimeout(timer); finish(); } return; }
+				var settled = false;
+				var settle = function (open) {
+					if (settled) { return; } settled = true;
+					if (open && !o.running) { o.running = true; o.port = p; }
+					try { ws.close(); } catch (e) {}
+					if (o.running) { clearTimeout(timer); finish(); }
+					else if (--pending <= 0) { clearTimeout(timer); finish(); }
+				};
+				ws.onopen = function () { settle(true); };
+				ws.onerror = function () { settle(false); };
+			});
+		});
+	}
+
 	D.register('headless', headlessSignals);
 	D.register('permissions', permissionCoherenceSignals);
 	D.register('cpu', cpuBenchmark);
+	D.register('discord', discordSignals);
 	D.register('props', propDumpSignals);
 	D.register('webgpu', webgpuSignals);
 	D.register('webrtc', webrtcSignals);

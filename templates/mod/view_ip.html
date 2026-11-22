@@ -1,3 +1,11 @@
+{% if config.imgboard_sfs.enabled and sfs %}
+	<p class="imgboard-sfs" style="margin:4px 0;">
+		StopForumSpam:
+		{% if sfs.listed %}<strong style="color:#b00;">listed as abusive</strong>{% if sfs.confidence is not null %} (confidence {{ sfs.confidence }}%){% endif %}{% if sfs.frequency %}, seen {{ sfs.frequency }}x{% endif %}
+		{% else %}<span class="unimportant">not listed</span>{% endif %}
+	</p>
+{% endif %}
+
 {% for board_posts in posts %}
 	<fieldset>
 		<legend>

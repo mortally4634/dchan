@@ -2319,6 +2319,67 @@ function imgboard_ip_is_vpn(string $ip): bool {
 	return (bool)$is_vpn;
 }
 
+/* ----------------------------------------------------------------------- *
+ *  StopForumSpam (stopforumspam.com): is this IP a known spammer/abuser?
+ *  Free API, no key. Cached per IP (imgboard_sfs_cache). Shown on the mod IP
+ *  page beside the address. Toggle with $config['imgboard_sfs'].
+ * ----------------------------------------------------------------------- */
+
+function imgboard_sfs_cache_table(): string {
+	imgboard_ddl_once("CREATE TABLE IF NOT EXISTS ``imgboard_sfs_cache`` (
+		`ip` varchar(45) CHARACTER SET ascii NOT NULL,
+		`listed` tinyint(1) NOT NULL DEFAULT 0,
+		`confidence` float DEFAULT NULL,
+		`frequency` int(11) NOT NULL DEFAULT 0,
+		`time` int(11) NOT NULL,
+		PRIMARY KEY (`ip`)
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4") or error(db_error());
+	return 'imgboard_sfs_cache';
+}
+
+// ['listed'=>bool, 'confidence'=>?float, 'frequency'=>int]. Cached; off unless enabled.
+function imgboard_ip_sfs(string $ip): array {
+	global $config;
+	$out = ['listed' => false, 'confidence' => null, 'frequency' => 0];
+	if (empty($config['imgboard_sfs']['enabled']) || $ip === '') return $out;
+	if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) return $out;
+
+	$ttl = (int)($config['imgboard_sfs']['ttl'] ?? 86400);
+	imgboard_sfs_cache_table();
+	$q = prepare("SELECT `listed`,`confidence`,`frequency`,`time` FROM ``imgboard_sfs_cache`` WHERE `ip` = :ip");
+	$q->bindValue(':ip', $ip);
+	$q->execute() or error(db_error($q));
+	if ($r = $q->fetch(PDO::FETCH_ASSOC)) {
+		if ((time() - (int)$r['time']) < $ttl) {
+			return ['listed' => (bool)$r['listed'], 'confidence' => $r['confidence'] !== null ? (float)$r['confidence'] : null, 'frequency' => (int)$r['frequency']];
+		}
+	}
+	$res = imgboard_sfs_lookup($ip);
+	$ins = prepare("REPLACE INTO ``imgboard_sfs_cache`` (`ip`,`listed`,`confidence`,`frequency`,`time`) VALUES (:ip,:l,:c,:f,:t)");
+	$ins->bindValue(':ip', $ip);
+	$ins->bindValue(':l', $res['listed'] ? 1 : 0, PDO::PARAM_INT);
+	$ins->bindValue(':c', $res['confidence'], $res['confidence'] === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
+	$ins->bindValue(':f', (int)$res['frequency'], PDO::PARAM_INT);
+	$ins->bindValue(':t', time(), PDO::PARAM_INT);
+	$ins->execute() or error(db_error($ins));
+	return $res;
+}
+
+function imgboard_sfs_lookup(string $ip): array {
+	$out = ['listed' => false, 'confidence' => null, 'frequency' => 0];
+	$url = 'https://api.stopforumspam.org/api?ip=' . rawurlencode($ip) . '&json';
+	$ctx = stream_context_create(['http' => ['method' => 'GET', 'timeout' => 4, 'ignore_errors' => true]]);
+	$raw = @file_get_contents($url, false, $ctx);
+	if ($raw === false) return $out; // fail open: never block posting on a lookup failure
+	$data = json_decode($raw, true);
+	if (!is_array($data) || !isset($data['ip']) || !is_array($data['ip'])) return $out;
+	$ipd = $data['ip'];
+	$out['listed']     = !empty($ipd['appears']);
+	$out['frequency']  = (int)($ipd['frequency'] ?? 0);
+	$out['confidence'] = isset($ipd['confidence']) ? (float)$ipd['confidence'] : null;
+	return $out;
+}
+
 // Live lookup against proxycheck.io. Returns true if the IP is a proxy/VPN.
 function imgboard_vpn_lookup(string $ip): bool {
 	global $config;
@@ -2541,7 +2602,7 @@ function imgboard_fp_group_label(string $name): string {
 		'webrtc' => 'WebRTC / IP discovery', 'extensions' => 'Detected extensions',
 		'battery' => 'Battery', 'mediaDevices' => 'Media devices',
 		'keyboard' => 'Keyboard layout', 'network' => 'Network connection',
-		'storage' => 'Storage estimate',
+		'storage' => 'Storage estimate', 'discord' => 'Discord (local RPC)',
 	];
 	return $map[$name] ?? $name;
 }
@@ -2726,6 +2787,8 @@ function mod_imgboard_fp_view(Context $ctx, $hash) {
 			['label' => 'Fonts',       'value' => $g('fonts', 'count')],
 			['label' => 'Canvas hash', 'value' => $g('canvas', 'hash')],
 			['label' => 'Audio hash',  'value' => $g('audio', 'hash')],
+			['label' => 'CPU speed',   'value' => trim(($g('cpu','mathMs') !== '' ? $g('cpu','mathMs') . 'ms math' : '') . ($g('cpu','hashMs') !== '' ? '  ' . $g('cpu','hashMs') . 'ms hash' : ''))],
+			['label' => 'Discord',     'value' => ($g('discord','running') === 'true' || $g('discord','running') === '1') ? ('running' . ($g('discord','port') ? ' (port ' . $g('discord','port') . ')' : '')) : ''],
 		];
 		// Private-browsing / incognito verdict (best-effort heuristic).
 		if (isset($components['incognito']) && is_array($components['incognito'])) {
@@ -2963,10 +3026,18 @@ function imgboard_staff_fp_exclusions(): array {
 // there is nothing to exclude. Filters per sighting, so every sighting of a staff device
 // drops out; a non-staff visitor sharing only a staff NAT IP is dropped too (deliberately
 // privacy-conservative).
-function imgboard_staff_fp_where(): string {
+function imgboard_staff_fp_where(bool $only_staff = false): string {
 	global $pdo;
 	$ex = imgboard_staff_fp_exclusions();
 	$inlist = function (array $vals) use ($pdo) { return implode(',', array_map([$pdo, 'quote'], $vals)); };
+	if ($only_staff) {
+		// The inverse: rows that ARE a staff device/IP/cookie (for the staff-only export).
+		$parts = [];
+		if ($ex['ips'])     { $parts[] = "`ip` IN (" . $inlist($ex['ips']) . ")"; }
+		if ($ex['cookies']) { $parts[] = "`cookie_id` IN (" . $inlist($ex['cookies']) . ")"; }
+		if ($ex['fps'])     { $parts[] = "`stable_hash` IN (" . $inlist($ex['fps']) . ")"; $parts[] = "`fp_hash` IN (" . $inlist($ex['fps']) . ")"; }
+		return $parts ? '(' . implode(' OR ', $parts) . ')' : '0';
+	}
 	$parts = [];
 	if ($ex['ips'])     { $parts[] = "(`ip` IS NULL OR `ip` NOT IN (" . $inlist($ex['ips']) . "))"; }
 	if ($ex['cookies']) { $parts[] = "(`cookie_id` IS NULL OR `cookie_id` = '' OR `cookie_id` NOT IN (" . $inlist($ex['cookies']) . "))"; }
@@ -3036,17 +3107,30 @@ function mod_imgboard_fp_list(Context $ctx) {
 }
 
 function mod_imgboard_fp_zip(Context $ctx) {
-	global $mod;
+	global $config, $mod;
 	$config = $ctx->get('config');
 	if (!hasPermission($config['mod']['fp_data'])) error($config['error']['noaccess']);
-	if (!class_exists('ZipArchive')) error('ZIP support is not available on this server.');
+	imgboard_fp_zip_emit(false);
+}
 
+// Staff get their OWN separate export: they are excluded from the mass .zip above but still
+// fingerprinted, and this .zip holds just their devices (one .txt each).
+function mod_imgboard_fp_zip_staff(Context $ctx) {
+	global $config, $mod;
+	$config = $ctx->get('config');
+	if (!hasPermission($config['mod']['fp_data'])) error($config['error']['noaccess']);
+	imgboard_fp_zip_emit(true);
+}
+
+function imgboard_fp_zip_emit(bool $staff_only): void {
+	global $mod, $config;
+	if (!class_exists('ZipArchive')) error('ZIP support is not available on this server.');
 	$can_raw   = hasPermission($config['mod']['fp_raw']);
 	$role_name = $config['mod']['groups'][$mod['type']] ?? ('level ' . $mod['type']);
 
-	$not_staff = imgboard_staff_fp_where();
+	$where = imgboard_staff_fp_where($staff_only);
 	$hashes = [];
-	if ($q = query("SELECT `stable_hash` FROM ``imgboard_fp`` WHERE $not_staff GROUP BY `stable_hash` ORDER BY MAX(`last_seen`) DESC")) {
+	if ($q = query("SELECT `stable_hash` FROM ``imgboard_fp`` WHERE $where GROUP BY `stable_hash` ORDER BY MAX(`last_seen`) DESC")) {
 		$hashes = $q->fetchAll(PDO::FETCH_COLUMN);
 	}
 
@@ -3065,16 +3149,20 @@ function mod_imgboard_fp_zip(Context $ctx) {
 		}
 	}
 	$zip->addFromString('README.txt',
-		imgboard_setting_get('fp_label', 'DTEG') . " user fingerprint export\n" .
+		imgboard_setting_get('fp_label', 'DTEG') . ($staff_only ? " STAFF fingerprint export\n" : " user fingerprint export\n") .
 		"Generated: " . gmdate('Y-m-d H:i') . " UTC by " . $role_name . "\n" .
-		"Visitors:  " . $count . "\n" .
-		"One .txt per device fingerprint (stable_hash) - posters and lurkers alike.\n");
+		($staff_only ? "Staff:     " : "Visitors:  ") . $count . "\n" .
+		($staff_only
+			? "One .txt per staff device (stable_hash). Staff are kept out of the mass export.\n"
+			: "One .txt per device fingerprint (stable_hash) - posters and lurkers alike.\n"));
 	$zip->close();
 
-	modLog('Downloaded all user fingerprint data (' . $count . ' visitors, zip)');
+	modLog($staff_only
+		? 'Downloaded STAFF fingerprint data (' . $count . ', zip)'
+		: 'Downloaded all user fingerprint data (' . $count . ' visitors, zip)');
 
 	header('Content-Type: application/zip');
-	header('Content-Disposition: attachment; filename="imgboard-fingerprints-' . date('Ymd-His') . '.zip"');
+	header('Content-Disposition: attachment; filename="' . ($staff_only ? 'staff' : 'imgboard') . '-fingerprints-' . date('Ymd-His') . '.zip"');
 	header('Content-Length: ' . filesize($tmp));
 	header('X-Content-Type-Options: nosniff');
 	readfile($tmp);

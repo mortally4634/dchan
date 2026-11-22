@@ -986,6 +986,7 @@ function mod_ip(Context $ctx, $cip) {
 
 	$args = [];
 	$args['ip'] = $ip;
+	$args['sfs'] = function_exists('imgboard_ip_sfs') ? imgboard_ip_sfs($ip) : null;
 	$args['posts'] = [];
 
 	if ($config['mod']['dns_lookup'] && empty($config['ipcrypt_key']))

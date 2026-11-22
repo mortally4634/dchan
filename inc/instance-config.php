@@ -149,6 +149,7 @@
 	// fingerprint/hwid/cookie/IP, plus a .zip of per-visitor .txt files. The
 	// zip route is registered before the list so it is matched first. Manager+.
 	$config['mod']['custom_pages']['/fingerprints/zip']                    = 'imgboard_fp_zip';
+	$config['mod']['custom_pages']['/fingerprints/zip-staff']              = 'imgboard_fp_zip_staff';
 	$config['mod']['custom_pages']['/fingerprints']                        = 'secure_POST imgboard_fp_list';
 
 	// "View as a lower role": preview the site as a rank below your own, or exit.
@@ -226,6 +227,14 @@
 		'enabled' => (getenv('VICHAN_VPN_CHECK') === '0') ? false : true,
 		'api_key' => getenv('VICHAN_PROXYCHECK_KEY') ?: '',
 		'ttl'     => 60 * 60 * 24 * 7, // cache each IP's result for 7 days
+	];
+
+	// StopForumSpam (stopforumspam.com): check poster IPs against the known-abuser list.
+	// Free, no key. Shown on the mod IP page beside the address. Off by default (set the
+	// env var to opt in); results cached per IP.
+	$config['imgboard_sfs'] = [
+		'enabled' => getenv('VICHAN_SFS_CHECK') === '1',
+		'ttl'     => 60 * 60 * 24, // cache each IP's result for 1 day
 	];
 
 	// Load the handlers for the pages above.
