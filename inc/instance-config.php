@@ -194,7 +194,7 @@
 	// .installed file (config.version); set the Tinyboard base and dchan versions here.
 	// Bump the dchan patch number (1.0.X) by one for every change to the software.
 	$config['imgboard_tinyboard_version'] = '0.9.6';
-	$config['imgboard_dchan_version']     = '1.0.5';
+	$config['imgboard_dchan_version']     = '1.1.2';
 
 	// Country flags: use the individual PNG files in static/flags/ (all present)
 	// rather than the condensed CSS sprite, so flags render without extra setup.
