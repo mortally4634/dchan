@@ -7,8 +7,39 @@ branding is stripped: the placeholders are `example.com`, the `imgboard` name/pr
 
 ## Install
 
-Requires Docker with Compose. The stack is web (nginx), php-fpm, MySQL, Redis, and
-optional Cloudflare Tunnel, Tor and I2P containers.
+The whole stack runs in containers (nginx, php-fpm, MySQL, Redis, plus optional Cloudflare
+Tunnel, Tor and I2P). The only things you install on the host are **Git** and **Docker with
+the Compose plugin** - nginx, PHP, MySQL and Redis all live inside the containers, so you do
+not install those yourself.
+
+### Install the components (per OS)
+
+**Windows 10 / 11**
+- Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) (it bundles Compose). It needs WSL 2: Docker Desktop can turn it on for you, or run `wsl --install` in an elevated PowerShell and reboot.
+- Install [Git](https://git-scm.com/download/win), or `winget install Git.Git`.
+- Start Docker Desktop (wait until it says "running"), then run the commands below in PowerShell or Git Bash.
+
+**macOS**
+- Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) (choose the Apple-silicon or Intel build), or `brew install --cask docker`, then launch it once.
+- Git comes with the Xcode command-line tools: `xcode-select --install` (or `brew install git`).
+
+**Linux**
+- Docker Engine + the Compose plugin:
+  - Debian / Ubuntu: `sudo apt install docker.io docker-compose-plugin`
+  - Fedora: `sudo dnf install docker docker-compose-plugin`
+  - Arch: `sudo pacman -S docker docker-compose`
+  - or the official, newest install: <https://docs.docker.com/engine/install/>
+- Start it and allow non-root use: `sudo systemctl enable --now docker`, then `sudo usermod -aG docker $USER` and log out/in.
+- Git: `sudo apt install git` / `sudo dnf install git` / `sudo pacman -S git`.
+
+Confirm the host is ready before continuing (all three should print a version):
+
+```bash
+docker --version
+docker compose version
+git --version
+```
+
 >OYY DOCTOS "==cp== .env.example" OYYYY
 ```bash
 git clone <your-fork-url> dchan && cd dchan
@@ -65,6 +96,12 @@ Notes:
    The home page is `templates/imgboard_home.html`.
 7. Set the optional keys you want (Turnstile site/secret, `VICHAN_PROXYCHECK_KEY`); features
    with no key simply stay off.
+8. Optional extra components (all off by default):
+   - **StopForumSpam** IP checks on the mod IP page: set `VICHAN_SFS_CHECK=1` (free, no key).
+   - **Offline staff push notifications**: in the `php` container run
+     `composer require minishlink/web-push:^7.0` then `php tools/gen-vapid.php`, put the
+     printed VAPID keys in `inc/secrets.php` (or the `VICHAN_VAPID_*` env vars), and serve
+     over HTTPS. Online notifications (the bell on `?/pending`) work without this.
 
 ## Where things live
 
@@ -153,7 +190,7 @@ Built on the work of:
 - **Tinyboard** 0.9.6 — Copyright © 2010-2014 Tinyboard Development Group.
   <https://github.com/savetheinternet/Tinyboard>
 - **vichan** — Copyright © 2012-2025 vichan-devel. <https://github.com/vichan-devel/vichan>
-- **dchan** 1.1.2 — this fork. <https://github.com/mortally4634/dchan>
+- **dchan** 1.1.3 — this fork. <https://github.com/mortally4634/dchan>
 
 Licenses: [LICENSE.md](LICENSE.md) covers dchan; [LICENSE.Tinyboard.md](LICENSE.Tinyboard.md) covers the
 Tinyboard and vichan code this fork is built on.
