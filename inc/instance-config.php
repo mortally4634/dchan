@@ -171,15 +171,25 @@
 	$config['mod']['custom_pages']['/ppa/reject/(\d+)']    = 'secure ppa_reject';
 
 	/* ---------------------------------------------------------------
-	 * Staff stay logged in via a long-lived mod cookie, and sessions are
-	 * tied to the IP (lock_ip) so a stolen cookie can't be replayed from
-	 * another address. Trade-off: a staff member whose IP changes (mobile /
-	 * dynamic ISP) is logged out and must sign in again.
+	 * Staff stay logged in via a long-lived mod cookie. Optionally the
+	 * session can be tied to the client IP (lock_ip) so a stolen cookie
+	 * can't be replayed from another address.
+	 *
+	 * Trade-off: with lock_ip on, any staff member whose IP changes
+	 * (mobile data, dynamic ISP, Cloudflare routing to a new client IP)
+	 * has their session hash invalidated on the next request and is
+	 * silently logged out. IPv6 is already softened to the /64 prefix in
+	 * imgboard_ip_lock_key(), but dynamic IPv4 still rotates constantly,
+	 * which is the usual cause of "I keep getting logged out".
+	 *
+	 * Default is OFF so staff stay logged in across IP changes. Set the
+	 * VICHAN_LOCK_IP=1 env var to opt back into IP-pinned sessions if you
+	 * accept the re-login churn in exchange for replay protection.
 	 * Set here (re-runs on every loadConfig) so it survives the
 	 * openBoard config reload.
 	 * ------------------------------------------------------------- */
 	$config['cookies']['expire'] = 60 * 60 * 24 * 365 * 10; // ~10 years
-	$config['mod']['lock_ip']    = true;
+	$config['mod']['lock_ip']    = getenv('VICHAN_LOCK_IP') === '1';
 
 	// Let banned users appeal (the appeal form shows on the ban screen; pending appeals
 	// surface under the Report queue and at ?/ban-appeals). Drives the auto-ban safety net.
