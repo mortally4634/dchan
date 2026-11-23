@@ -1,6 +1,6 @@
 <footer>
     <p class="unimportant" style="margin-top:20px;text-align:center;">- <a href="https://github.com/savetheinternet/Tinyboard">Tinyboard</a> {{ config.imgboard_tinyboard_version }} +
-        <a href="https://github.com/vichan-devel/vichan">vichan</a> {{ config.version }} + <a href="https://github.com/mortally4634/dchan">dchan</a> {{ config.imgboard_dchan_version }}
+        <a href="https://github.com/vichan-devel/vichan">vichan</a> {{ config.version ?: config.imgboard_vichan_version }} + <a href="https://github.com/mortally4634/dchan">dchan</a> {{ config.imgboard_dchan_version }}
         {% if check_container() %}Running Containerized{% endif %}
     -
     <br>Tinyboard Copyright &copy; 2010-2014 Tinyboard Development Group    

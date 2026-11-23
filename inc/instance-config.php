@@ -204,7 +204,12 @@
 	// .installed file (config.version); set the Tinyboard base and dchan versions here.
 	// Bump the dchan patch number (1.0.X) by one for every change to the software.
 	$config['imgboard_tinyboard_version'] = '0.9.6';
-	$config['imgboard_dchan_version']     = '1.1.4';
+	// vichan's version normally comes from the .installed file (config.version),
+	// but that file doesn't exist until install.php runs, so the footer would show
+	// a blank vichan version before/without install. Pin the upstream vichan
+	// version here as a fallback; the footer prefers config.version when present.
+	$config['imgboard_vichan_version']    = '5.2.2';
+	$config['imgboard_dchan_version']     = '1.1.5';
 
 	// Country flags: use the individual PNG files in static/flags/ (all present)
 	// rather than the condensed CSS sprite, so flags render without extra setup.
