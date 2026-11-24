@@ -196,6 +196,75 @@ function imgboard_extract_links(string $text): array {
 	return array_values(array_unique(array_filter($out)));
 }
 
+// Allowlist of TLDs that make a bare "host.tld" count as a link (Approach A + a
+// sprinkle of B). Common gTLDs, abuse-favoured new gTLDs and ccTLDs. Deliberately
+// OMITS file-extension lookalikes (zip, mov, md, js, ...) so "photo.zip" / "readme.md"
+// aren't held as links. Edit this list to taste - add a TLD to catch it, remove one
+// to stop holding it. Returned flipped for O(1) lookup.
+function imgboard_link_tlds(): array {
+	static $set = null;
+	if ($set !== null) return $set;
+	$tlds = [
+		// classic gTLDs
+		'com','net','org','info','biz','name','pro','mobi','asia','tel',
+		// common new gTLDs (many abuse-favoured)
+		'xyz','top','online','site','website','space','live','life','world','icu',
+		'club','vip','fun','shop','store','link','click','host','press','pw',
+		'app','dev','page','cloud','tech','digital','email','link','work','today',
+		'win','bid','loan','download','stream','gdn','rest','cam','sbs','cfd','lol','quest','cyou','best','monster','buzz',
+		// ccTLDs frequently seen
+		'us','uk','ca','au','de','fr','es','it','nl','be','ch','at','se','no','fi','dk','pl','pt','ie','cz','gr','ro','hu',
+		'ru','su','ua','by','kz','cn','jp','kr','in','hk','tw','sg','my','id','th','vn','ph',
+		'br','mx','ar','cl','co','pe','ve','za','ng','ke','eg','ma','tr','il','sa','ae',
+		'io','me','tv','cc','gg','to','ws','fm','ly','sh','st','is','ai','gl','nu',
+		'tk','ml','ga','cf','xxx','onion',
+	];
+	$set = array_fill_keys($tlds, true);
+	return $set;
+}
+
+// Detect link-shaped content in raw post text, including scheme-less and obfuscated
+// forms the LPA/blocklist would otherwise miss. De-obfuscates first (zero-width strip,
+// entity + percent decode, "(dot)"->".", "hxxp"->"http"), then collects: rel="nofollow"
+// anchors, http(s):// URLs, protocol-relative //host, and bare host.tld where the TLD is
+// in imgboard_link_tlds(). Returns de-duplicated raw candidate strings (compare with
+// imgboard_link_canon). Pure string work - no DB, no network.
+function imgboard_detect_links(string $text): array {
+	// De-obfuscate a working copy for the scheme/host scans (anchors use the raw markup).
+	$s = $text;
+	for ($i = 0; $i < 3 && strpos($s, '%') !== false; $i++) {
+		$d = rawurldecode($s);
+		if ($d === $s) break;
+		$s = $d;
+	}
+	$s = html_entity_decode($s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+	$s = preg_replace('/[\x{200B}-\x{200F}\x{202A}-\x{202E}\x{2060}\x{FEFF}\x{00AD}\x{180E}]/u', '', (string)$s);
+	$s = preg_replace('~\bhxxp(s?)~i', 'http$1', (string)$s);
+	$s = str_ireplace([' (dot) ', '(dot)', '[dot]', '{dot}', ' dot '], '.', (string)$s);
+
+	$out = [];
+	// External anchors in the rendered markup (href + rel in either order).
+	if (preg_match_all('~<a\b(?=[^>]*\brel="nofollow")[^>]*\bhref="([^"]+)"~i', $text, $m)) {
+		foreach ($m[1] as $u) { $out[] = html_entity_decode($u, ENT_QUOTES); }
+	}
+	// Scheme URLs.
+	if (preg_match_all('~https?://[^\s<>"\'\]]+~i', $s, $m2)) {
+		foreach ($m2[0] as $u) { $out[] = $u; }
+	}
+	// Protocol-relative //host/...
+	if (preg_match_all('#(?<![a-z0-9:])//([a-z0-9][a-z0-9._~%-]*)#i', $s, $m3)) {
+		foreach ($m3[1] as $u) { $out[] = $u; }
+	}
+	// Bare host.tld with an allowlisted final label (catches scheme-less domains).
+	$tlds = imgboard_link_tlds();
+	if (preg_match_all('~(?<![a-z0-9._-])((?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+([a-z]{2,24}))~i', $s, $m4, PREG_SET_ORDER)) {
+		foreach ($m4 as $mm) {
+			if (isset($tlds[strtolower($mm[2])])) { $out[] = $mm[1]; }
+		}
+	}
+	return array_values(array_unique(array_filter($out)));
+}
+
 // Build a pending queue across boards for a given WHERE clause + approve action.
 // $kind is 'file' or 'link' and selects the staff preview + reject actions.
 function imgboard_pending_queue(string $where, string $approve_action, string $kind): array {
@@ -2443,19 +2512,39 @@ function imgboard_link_canon(string $s): string {
 	return rtrim($s, "/.\t\r\n");
 }
 
-// Return the error to show if the post body contains an active blocked word or link,
-// else null. Words match literally; links are matched canonically (see imgboard_link_canon)
-// against both every link found in the body and the whole body, so obfuscated links still hit.
-function imgboard_blocklist_match(string $body_nomarkup): ?string {
-	foreach (imgboard_blocklist_cached('words') as $w) {
-		if ($w !== '' && mb_stripos($body_nomarkup, $w) !== false) {
+// Canonical forms of a word for bypass-resistant matching: [stripped, squeezed].
+// `stripped` removes zero-width / direction / combining marks and lowercases;
+// `squeezed` additionally drops every non-alphanumeric, so "b a d", "b.a.d",
+// "b-a-d" and zero-width-split variants all reduce to "bad". Accepts over-blocking.
+function imgboard_word_canon(string $s): array {
+	$s = preg_replace('/[\x{200B}-\x{200F}\x{202A}-\x{202E}\x{2060}\x{FEFF}\x{00AD}\x{180E}]/u', '', $s);
+	$s = preg_replace('/\p{M}+/u', '', (string)$s);
+	$stripped = mb_strtolower((string)$s, 'UTF-8');
+	$squeezed = (string)preg_replace('/[^a-z0-9]+/u', '', $stripped);
+	return [$stripped, $squeezed];
+}
+
+// Pure core: does the body contain an active blocked word or link? Returns the error
+// to show, else null. Words match on the stripped body OR the squeezed body (see
+// imgboard_word_canon); a squeezed word under 2 chars is skipped so it can't match
+// everything. Links are matched canonically (imgboard_link_canon) against every link
+// imgboard_detect_links() finds plus the whole-body canon, so scheme-less / obfuscated
+// forms still hit. Takes the lists explicitly so it is unit-testable without the DB.
+function imgboard_blocklist_match_core(string $body_nomarkup, array $words, array $links): ?string {
+	list($body_stripped, $body_squeezed) = imgboard_word_canon($body_nomarkup);
+	foreach ($words as $w) {
+		if ($w === '') continue;
+		list($ws, $wsq) = imgboard_word_canon((string)$w);
+		if ($ws !== '' && mb_stripos($body_stripped, $ws) !== false) {
+			return 'Your post contains a blocked word.';
+		}
+		if (strlen($wsq) >= 2 && $body_squeezed !== '' && strpos($body_squeezed, $wsq) !== false) {
 			return 'Your post contains a blocked word.';
 		}
 	}
-	$links = imgboard_blocklist_cached('links');
 	if ($links) {
 		$candidates = [imgboard_link_canon($body_nomarkup)];
-		foreach (imgboard_extract_links($body_nomarkup) as $u) { $candidates[] = imgboard_link_canon($u); }
+		foreach (imgboard_detect_links($body_nomarkup) as $u) { $candidates[] = imgboard_link_canon($u); }
 		foreach ($links as $l) {
 			$lc = imgboard_link_canon((string)$l);
 			if ($lc === '') continue;
@@ -2467,6 +2556,16 @@ function imgboard_blocklist_match(string $body_nomarkup): ?string {
 		}
 	}
 	return null;
+}
+
+// Return the error to show if the post body contains an active blocked word or link,
+// else null. Thin wrapper over imgboard_blocklist_match_core with the cached lists.
+function imgboard_blocklist_match(string $body_nomarkup): ?string {
+	return imgboard_blocklist_match_core(
+		$body_nomarkup,
+		imgboard_blocklist_cached('words'),
+		imgboard_blocklist_cached('links')
+	);
 }
 
 // Auto-ban (24h, site-wide) a poster whose post was refused for a blocked word/link. They

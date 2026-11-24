@@ -76,7 +76,7 @@ var banlist_init = function(token, my_boards, inMod) {
       };
     } else {
       columns = {
-      mask: {name: selall+_("IP address"), width: "220px", fmt: function(f) {
+      mask: {name: selall+_("IP address"), width: "320px", fmt: function(f) {
         var pre = "";
         if (inMod && f.access) {
           pre = "<input type='checkbox' class='unban'>";
@@ -87,7 +87,7 @@ var banlist_init = function(token, my_boards, inMod) {
 	}
 	return pre+f.mask;
       } },
-      reason: {name: _("Reason"), width: "calc(100% - 770px - 6 * 4px)", fmt: fmt_reason},
+      reason: {name: _("Reason"), width: "calc(100% - 870px - 6 * 4px)", fmt: fmt_reason},
       board: {name: _("Board"), width: "60px", fmt: fmt_board},
       created: {name: _("Set"), width: "100px", fmt: function(f) {
         return ago(f.created) + _(" ago"); // in AGO form

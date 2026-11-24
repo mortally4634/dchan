@@ -924,6 +924,13 @@ function post(array $post) {
 	// (markup_url emits rel="nofollow" for those) starts with its link(s)
 	// unapproved, so they are covered by the placeholder until a mod approves.
 	$has_link = isset($post['body']) && strpos($post['body'], 'rel="nofollow"') !== false;
+	// Imgboard: also hold scheme-less / obfuscated links that never render as an
+	// anchor (bare "evil.com", "evil(dot)com", hxxp://), which rel="nofollow" misses.
+	if (!$has_link && function_exists('imgboard_detect_links')) {
+		$scan = (isset($post['body_nomarkup']) && $post['body_nomarkup'] !== '')
+			? $post['body_nomarkup'] : (string)($post['body'] ?? '');
+		$has_link = $scan !== '' && imgboard_detect_links($scan) !== [];
+	}
 	$query->bindValue(':approved_link', ($has_link && empty($post['mod'])) ? 0 : 1, PDO::PARAM_INT);
 
 	// Basic stuff
