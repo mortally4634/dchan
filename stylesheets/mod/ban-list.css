@@ -8,6 +8,13 @@
   margin: 2px;
   padding: 2px;
   overflow: hidden;
+  /* Long IPv6 addresses are one unbreakable token wider than the 220px IP
+     column. Allow them to break so they wrap inside the cell instead of
+     spilling across the Reason column (most visible on the hover reveal
+     below, where overflow becomes visible). `anywhere` only breaks a token
+     that can't otherwise fit, so ordinary Reason wording is left intact. */
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 #banlist td:hover {
   overflow: visible;
