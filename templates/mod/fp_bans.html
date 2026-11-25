@@ -1,0 +1,37 @@
+<div class="fp-bans">
+	<p class="unimportant">
+		Fingerprint bans follow a banned poster across IP changes (matched on the DTEG
+		fingerprint and the per-visitor cookie, never the shared device hwid). They are
+		created automatically whenever you ban a post, and enforced when the visitor
+		posts or loads the ban page. Delete one to lift it.
+	</p>
+
+	{% if bans is empty %}
+		<p><em>No fingerprint bans.</em></p>
+	{% else %}
+		<table class="mod">
+			<tr>
+				<th>#</th>
+				<th>Fingerprint</th>
+				<th>Cookie</th>
+				<th>hwid</th>
+				<th>Reason</th>
+				<th>Expires</th>
+				<th>By</th>
+				<th></th>
+			</tr>
+			{% for b in bans %}
+				<tr>
+					<td>{{ b.id }}</td>
+					<td><code>{{ b.fp_hash|e }}</code></td>
+					<td><code>{{ b.cookie_id|e }}</code></td>
+					<td><code>{{ b.hwid|e }}</code></td>
+					<td>{{ b.reason|e }}</td>
+					<td>{% if b.expires %}{{ b.expires|date('Y-m-d H:i') }}{% else %}<em>permanent</em>{% endif %}</td>
+					<td>{% if b.by %}{{ b.by|e }}{% else %}<em>system</em>{% endif %}</td>
+					<td><a href="?/fp-bans/delete/{{ b.id }}/{{ b.del_token }}">[delete]</a></td>
+				</tr>
+			{% endfor %}
+		</table>
+	{% endif %}
+</div>

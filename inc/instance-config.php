@@ -209,7 +209,7 @@
 	// a blank vichan version before/without install. Pin the upstream vichan
 	// version here as a fallback; the footer prefers config.version when present.
 	$config['imgboard_vichan_version']    = '5.2.2';
-	$config['imgboard_dchan_version']     = '1.1.7';
+	$config['imgboard_dchan_version']     = '1.1.9';
 
 	// Country flags: use the individual PNG files in static/flags/ (all present)
 	// rather than the condensed CSS sprite, so flags render without extra setup.
@@ -250,6 +250,10 @@
 	$config['imgboard_sfs'] = [
 		'enabled' => getenv('VICHAN_SFS_CHECK') === '1',
 		'ttl'     => 60 * 60 * 24, // cache each IP's result for 1 day
+		// Auto-reject new posts from IPs on the StopForumSpam abuser list (needs
+		// 'enabled' too). This blocks known spammers only - VPN/proxy users are not
+		// affected (that is the separate proxycheck signal, left as display-only).
+		'reject'  => getenv('VICHAN_SFS_REJECT') === '1',
 	];
 
 	// Load the handlers for the pages above.

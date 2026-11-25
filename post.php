@@ -1363,6 +1363,16 @@ if (isset($_POST['delete'])) {
 		error($block_msg);
 	}
 
+	// Imgboard: reject posts from IPs on the StopForumSpam abuser list when auto-reject
+	// is enabled. Known spammers only - VPN/proxy users are intentionally NOT blocked.
+	if (empty($post['mod']) && !empty($config['imgboard_sfs']['reject']) && function_exists('imgboard_ip_sfs')) {
+		$sfs = imgboard_ip_sfs($_SERVER['REMOTE_ADDR'] ?? '');
+		if (!empty($sfs['listed'])) {
+			undoImage($post);
+			error(_('Your IP address is listed as a known spam source (StopForumSpam).'));
+		}
+	}
+
 	// Imgboard: refuse files whose hash a mod has banned (Reject + hashban).
 	if (empty($post['mod']) && $post['has_file'] && function_exists('imgboard_filehash_is_banned')) {
 		$hashes = [];

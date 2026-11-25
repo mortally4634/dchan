@@ -77,6 +77,8 @@ $config['mod']['custom_pages']['/(\%b)/rejectlinkban/(\d+)']           = 'secure
 $config['mod']['custom_pages']['/blocked-(words|links)']               = 'secure_POST blocklist';
 $config['mod']['custom_pages']['/blocked-(words|links)/approve/(\d+)'] = 'secure blocklist_approve';
 $config['mod']['custom_pages']['/blocked-(words|links)/delete/(\d+)']  = 'secure blocklist_delete';
+$config['mod']['custom_pages']['/fp-bans']                             = 'fp_bans';
+$config['mod']['custom_pages']['/fp-bans/delete/(\d+)']                = 'secure fp_ban_delete';
 $config['mod']['custom_pages']['/upgrade-db']                         = 'upgrade_db';
 $config['mod']['upgrade_db'] = 30;  // Admins only
 
@@ -2578,6 +2580,156 @@ function imgboard_blocklist_autoban(string $ip, string $why): void {
 		Bans::new_ban($ip, 'Automatic ban: ' . $why, '24h', false /* site-wide */, -1 /* system */, false);
 		if (function_exists('modLog')) { modLog('Auto-banned (24h) a poster for a blocked word/link', false); }
 	} catch (\Throwable $e) { /* never block the error response on a ban failure */ }
+}
+
+/* ----------------------------------------------------------------------- *
+ *  Fingerprint bans
+ *
+ *  A parallel ban record keyed on a visitor's DTEG fingerprint (fp_hash) and
+ *  per-visitor cookie (cookie_id), so a ban follows an evader across IP changes.
+ *  Captured automatically whenever a ban is placed on a post (Bans::new_ban),
+ *  enforced in checkBan() (posting + the banned.php entry page) and surfaced to
+ *  the client by fp.php for the static-page redirect. hwid is stored for staff
+ *  reference but never matched on - it is derived from UA+language+encoding and
+ *  collides across everyone on the same browser/OS, which would ban strangers.
+ *  Managed (list + undo) at ?/fp-bans.
+ * ----------------------------------------------------------------------- */
+function imgboard_fp_ban_table(): string {
+	imgboard_ddl_once("CREATE TABLE IF NOT EXISTS ``imgboard_fp_bans`` (
+		`id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+		`fp_hash` varchar(32) CHARACTER SET ascii NOT NULL DEFAULT '',
+		`cookie_id` varchar(64) CHARACTER SET ascii NOT NULL DEFAULT '',
+		`hwid` varchar(32) CHARACTER SET ascii NOT NULL DEFAULT '',
+		`reason` varchar(600) DEFAULT NULL,
+		`expires` int(11) DEFAULT NULL,
+		`time` int(11) NOT NULL,
+		`by` varchar(64) DEFAULT NULL,
+		PRIMARY KEY (`id`),
+		KEY `k_fp` (`fp_hash`),
+		KEY `k_cookie` (`cookie_id`)
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+	return 'imgboard_fp_bans';
+}
+
+// Pure predicate: does a stored fp-ban row match this visitor? Matches on fp_hash
+// or cookie_id only (never hwid), ignores empty identifiers, and treats a null
+// `expires` as permanent. Kept separate so it is unit-testable without the DB.
+function imgboard_fp_ban_row_matches(array $row, ?string $fp_hash, ?string $cookie_id, int $now): bool {
+	if (isset($row['expires']) && $row['expires'] !== null && (int)$row['expires'] < $now) return false;
+	if ($fp_hash !== null && $fp_hash !== '' && !empty($row['fp_hash']) && hash_equals((string)$row['fp_hash'], $fp_hash)) return true;
+	if ($cookie_id !== null && $cookie_id !== '' && !empty($row['cookie_id']) && hash_equals((string)$row['cookie_id'], $cookie_id)) return true;
+	return false;
+}
+
+// Add a fingerprint ban. Skips rows with nothing matchable (no fp_hash and no
+// cookie_id), and de-dupes an identical unexpired entry.
+function imgboard_fp_ban_add(?string $fp_hash, ?string $cookie_id, ?string $hwid, ?string $reason, ?int $expires, ?string $by): void {
+	$fp_hash = $fp_hash ?: '';
+	$cookie_id = $cookie_id ?: '';
+	$hwid = $hwid ?: '';
+	if ($fp_hash === '' && $cookie_id === '') return;
+	imgboard_fp_ban_table();
+	$now = time();
+	$dup = prepare("SELECT `id` FROM ``imgboard_fp_bans`` WHERE `fp_hash` = :f AND `cookie_id` = :c AND (`expires` IS NULL OR `expires` >= :n) LIMIT 1");
+	$dup->bindValue(':f', $fp_hash);
+	$dup->bindValue(':c', $cookie_id);
+	$dup->bindValue(':n', $now, PDO::PARAM_INT);
+	$dup->execute() or error(db_error($dup));
+	if ($dup->fetch()) return;
+	$q = prepare("INSERT INTO ``imgboard_fp_bans`` (`fp_hash`,`cookie_id`,`hwid`,`reason`,`expires`,`time`,`by`) VALUES (:f,:c,:h,:r,:e,:t,:b)");
+	$q->bindValue(':f', $fp_hash);
+	$q->bindValue(':c', $cookie_id);
+	$q->bindValue(':h', $hwid);
+	$q->bindValue(':r', $reason !== null && $reason !== '' ? $reason : null, $reason !== null && $reason !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL);
+	$q->bindValue(':e', $expires, $expires === null ? PDO::PARAM_NULL : PDO::PARAM_INT);
+	$q->bindValue(':t', $now, PDO::PARAM_INT);
+	$q->bindValue(':b', $by !== null && $by !== '' ? $by : null, $by !== null && $by !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL);
+	$q->execute() or error(db_error($q));
+}
+
+// Is this visitor under an active fingerprint ban? Returns ['reason','expires'] or null.
+function imgboard_fp_ban_match(?string $fp_hash, ?string $cookie_id): ?array {
+	if (($fp_hash === null || $fp_hash === '') && ($cookie_id === null || $cookie_id === '')) return null;
+	imgboard_fp_ban_table();
+	$now = time();
+	$q = prepare("SELECT `fp_hash`,`cookie_id`,`reason`,`expires` FROM ``imgboard_fp_bans``
+		WHERE ((:f <> '' AND `fp_hash` = :f) OR (:c <> '' AND `cookie_id` = :c))
+		ORDER BY `time` DESC LIMIT 20");
+	$q->bindValue(':f', (string)$fp_hash);
+	$q->bindValue(':c', (string)$cookie_id);
+	$q->execute() or error(db_error($q));
+	while ($row = $q->fetch(PDO::FETCH_ASSOC)) {
+		if (imgboard_fp_ban_row_matches($row, $fp_hash, $cookie_id, $now)) {
+			return ['reason' => $row['reason'], 'expires' => $row['expires']];
+		}
+	}
+	return null;
+}
+
+// Capture a fingerprint ban from the post a mod just banned (fp_hash/cookie_id/hwid
+// ride along on the post row). Called from Bans::new_ban.
+function imgboard_fp_ban_capture_from_post(array $post, ?string $reason, ?int $expires, ?string $by): void {
+	imgboard_fp_ban_add(
+		isset($post['fp_hash']) ? (string)$post['fp_hash'] : null,
+		isset($post['cookie_id']) ? (string)$post['cookie_id'] : null,
+		isset($post['hwid']) ? (string)$post['hwid'] : null,
+		$reason, $expires, $by
+	);
+	if (function_exists('modLog')) { modLog('Fingerprint-banned a poster (follows IP changes)', false); }
+}
+
+// Capture fingerprint bans from every fingerprint seen at a single IP (imgboard_fp),
+// so a ban typed as a bare IP - with no post attached - still becomes a fingerprint
+// ban. Returns how many were added. Degrades to 0 if the fp table isn't there yet.
+// Single IPs only: a CIDR/wildcard range can't be enumerated against stored IPs.
+function imgboard_fp_ban_capture_from_ip(string $ip, ?string $reason, ?int $expires, ?string $by, int $limit = 25): int {
+	if ($ip === '' || filter_var($ip, FILTER_VALIDATE_IP) === false) return 0;
+	imgboard_fp_ban_table();
+	$n = 0;
+	$q = prepare("SELECT `fp_hash`,`cookie_id`,`hwid` FROM ``imgboard_fp`` WHERE `ip` = :ip ORDER BY `last_seen` DESC LIMIT :lim");
+	$q->bindValue(':ip', $ip);
+	$q->bindValue(':lim', $limit, PDO::PARAM_INT);
+	if (!$q->execute()) return 0; // table may not exist yet - don't halt the ban
+	while ($r = $q->fetch(PDO::FETCH_ASSOC)) {
+		imgboard_fp_ban_add($r['fp_hash'] ?? null, $r['cookie_id'] ?? null, $r['hwid'] ?? null, $reason, $expires, $by);
+		$n++;
+	}
+	return $n;
+}
+
+function imgboard_fp_ban_list(): array {
+	imgboard_fp_ban_table();
+	$rows = [];
+	$q = query("SELECT * FROM ``imgboard_fp_bans`` ORDER BY `time` DESC LIMIT 500") or error(db_error());
+	while ($r = $q->fetch(PDO::FETCH_ASSOC)) { $rows[] = $r; }
+	return $rows;
+}
+
+function imgboard_fp_ban_delete(int $id): void {
+	imgboard_fp_ban_table();
+	$q = prepare("DELETE FROM ``imgboard_fp_bans`` WHERE `id` = :id");
+	$q->bindValue(':id', $id, PDO::PARAM_INT);
+	$q->execute() or error(db_error($q));
+}
+
+// Staff screen: list fingerprint bans with a delete (undo) link.
+function mod_fp_bans(Context $ctx) {
+	global $config, $mod;
+	if (!hasPermission($config['mod']['ban'])) error($config['error']['noaccess']);
+	$bans = imgboard_fp_ban_list();
+	foreach ($bans as &$b) {
+		$b['del_token'] = make_secure_link_token('fp-bans/delete/' . $b['id']);
+	}
+	unset($b);
+	echo mod_page(_('Fingerprint bans'), 'mod/fp_bans.html', [ 'bans' => $bans ]);
+}
+
+function mod_fp_ban_delete(Context $ctx, $id) {
+	global $config;
+	if (!hasPermission($config['mod']['ban'])) error($config['error']['noaccess']);
+	imgboard_fp_ban_delete((int)$id);
+	modLog('Deleted fingerprint ban #' . (int)$id);
+	header('Location: ?/fp-bans', true, $config['redirect_http']);
 }
 
 /* ----------------------------------------------------------------------- *

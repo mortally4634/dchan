@@ -627,6 +627,17 @@
 				body: body,
 				credentials: 'same-origin',
 				keepalive: true
+			}).then(function (res) {
+				// Normal case: 204 no content. A JSON body means this visitor is banned
+				// (IP/range or fingerprint) - show the ban page (static boards never hit PHP).
+				if (!res || !res.ok || res.status === 204) { return; }
+				var ct = res.headers.get('content-type') || '';
+				if (ct.indexOf('application/json') === -1) { return; }
+				return res.json().then(function (j) {
+					if (j && j.banned && j.url && location.pathname !== '/banned.php') {
+						location.replace(j.url);
+					}
+				});
 			})['catch'](function () {});
 		} catch (e) {}
 	}

@@ -457,6 +457,19 @@ class Bans {
 
 		$query->execute() or error(db_error($query));
 
+		// Imgboard: also fingerprint-ban so the ban follows the poster across IP changes.
+		// From the banned post's fp when present, and from every fingerprint seen at the
+		// IP for a bare single-IP ban - so every ban becomes a fingerprint ban wherever a
+		// fingerprint is knowable (a CIDR/wildcard range has no single fingerprint).
+		$fp_expires = (is_int($length) && $length > time()) ? $length : null;
+		$fp_by = isset($mod['username']) ? $mod['username'] : null;
+		if ($post && function_exists('imgboard_fp_ban_capture_from_post')) {
+			imgboard_fp_ban_capture_from_post($post, $reason !== '' ? $reason : null, $fp_expires, $fp_by);
+		}
+		if (function_exists('imgboard_fp_ban_capture_from_ip') && filter_var($mask, FILTER_VALIDATE_IP) !== false) {
+			imgboard_fp_ban_capture_from_ip($mask, $reason !== '' ? $reason : null, $fp_expires, $fp_by);
+		}
+
 		$ban_len = $length > 0 ? preg_replace('/^(\d+) (\w+?)s?$/', '$1-$2', Format\until($length)) : 'permanent';
 		$ban_board = $ban_board ? "/$ban_board/" : 'all boards';
 		$ban_ip = filter_var($mask, FILTER_VALIDATE_IP) !== false ? "<a href=\"?/IP/$cloaked_mask\">$cloaked_mask</a>" : $cloaked_mask;

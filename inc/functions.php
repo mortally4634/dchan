@@ -812,6 +812,33 @@ function checkBan($board = false) {
 		}
 	}
 
+	// Imgboard: fingerprint ban - follows a ban evader across IP changes. Matched on
+	// the DTEG fp_hash / per-visitor cookie (never the collision-prone hwid). Shows
+	// the same ban screen; enforced here so both posting (post.php) and the entry
+	// page (banned.php) are covered. json_response callers get the JSON form.
+	if (function_exists('imgboard_fp_ban_match')) {
+		$fp  = (isset($_COOKIE['imgboard_fp'])  && preg_match('/^[a-f0-9]{8,32}$/', $_COOKIE['imgboard_fp']))  ? $_COOKIE['imgboard_fp']  : null;
+		$cid = (isset($_COOKIE['imgboard_uid']) && preg_match('/^[a-f0-9]{32}$/',   $_COOKIE['imgboard_uid'])) ? $_COOKIE['imgboard_uid'] : null;
+		$fpb = imgboard_fp_ban_match($fp, $cid);
+		if ($fpb !== null) {
+			if (!isset($_POST['json_response'])) {
+				displayBan(array(
+					'id'      => 0,
+					'seen'    => 1,
+					'mask'    => $_SERVER['REMOTE_ADDR'],
+					'reason'  => $fpb['reason'],
+					'board'   => false,
+					'expires' => $fpb['expires'] !== null ? (int)$fpb['expires'] : false,
+					'post'    => false,
+					'message' => false,
+				));
+			} else {
+				header('Content-Type: text/json');
+				die(json_encode(array('error' => true, 'banned' => true)));
+			}
+		}
+	}
+
 	if ($config['auto_maintenance']) {
 		// I'm not sure where else to put this. It doesn't really matter where; it just needs to be called every
 		// now and then to keep the ban list tidy.

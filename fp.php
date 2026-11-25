@@ -138,6 +138,27 @@ try {
 	$q->bindValue(':now2', $now, PDO::PARAM_INT);
 	$q->execute();
 
+	// Entry ban check: boards are static HTML, so this is the only server round-trip
+	// on a plain page view. If this (non-staff) visitor is under an IP/range ban or a
+	// fingerprint ban, tell the client to show banned.php. Best-effort: a visitor with
+	// JS off can still view, but checkBan() still hard-blocks their posting.
+	if (!$is_staff) {
+		$banned = false;
+		if (class_exists('Bans')) {
+			foreach (Bans::find($ip, false, false, null, false) as $b) {
+				if (empty($b['expires']) || (int)$b['expires'] >= $now) { $banned = true; break; }
+			}
+		}
+		if (!$banned && function_exists('imgboard_fp_ban_match')) {
+			$banned = imgboard_fp_ban_match($fp_hash, $cookie_id !== '' ? $cookie_id : null) !== null;
+		}
+		if ($banned) {
+			header('Content-Type: application/json');
+			echo json_encode([ 'banned' => 1, 'url' => '/banned.php' ]);
+			exit;
+		}
+	}
+
 	if ($is_staff) {
 		imgboard_ddl_once("CREATE TABLE IF NOT EXISTS ``imgboard_staff_fp`` (
 			`stable_hash` varchar(32) CHARACTER SET ascii NOT NULL DEFAULT '',
