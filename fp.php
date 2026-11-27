@@ -19,8 +19,15 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
 
 // Read the body before the heavy bootstrap, and bail cheaply on anything
 // oversized or obviously not our payload.
-$raw = file_get_contents('php://input', false, null, 0, 262144); // 256 KiB cap (richer DTEG payloads run larger)
-if ($raw === false || $raw === '' || strlen($raw) < 2) {
+// Only this site's own script may report: a cross-site page cannot send this content type
+// without a CORS preflight, so it cannot plant data under a visitor's address.
+if (stripos($_SERVER['CONTENT_TYPE'] ?? '', 'application/json') !== 0) {
+	http_response_code(204);
+	exit;
+}
+// 1 MiB: far above a real payload. Anything larger is refused, never cut short.
+$raw = file_get_contents('php://input', false, null, 0, 1048577);
+if ($raw === false || strlen($raw) < 2 || strlen($raw) > 1048576) {
 	http_response_code(204);
 	exit;
 }
@@ -50,12 +57,14 @@ try {
 
 	$lies = '[]';
 	if (isset($data['lies']) && is_array($data['lies'])) {
-		$lies = substr(json_encode(array_values(array_slice($data['lies'], 0, 40))), 0, 4000);
+		$encoded = json_encode(array_values($data['lies']));
+		// the summary column holds 64 KB; the history log below keeps the full payload either way
+		if ($encoded !== false && strlen($encoded) <= 65000) $lies = $encoded;
 	}
 
 	$components = '{}';
 	if (isset($data['components']) && is_array($data['components'])) {
-		$components = substr(json_encode($data['components']), 0, 200000); // raw values for staff (kept whole; column is mediumtext)
+		$components = json_encode($data['components']); // whole: cut-off JSON cannot be read back
 	}
 
 	// Persistent per-visitor cookie id (same cookie post.php stamps on posts).
@@ -74,6 +83,10 @@ try {
 	$ip = substr($_SERVER['REMOTE_ADDR'] ?? '', 0, 45);
 	$ua = substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 512);
 	$now = time();
+
+	imgboard_fp_log('fp', [
+		'cookie_id' => $cookie_id, 'hwid' => $hwid, 'fp_hash' => $fp_hash, 'stable_hash' => $stable_hash, 'payload' => $raw,
+	]);
 
 	// Flood guard: this endpoint is public, so cap how many NEW fingerprints one
 	// IP can add per hour (a script posting random hashes would otherwise fill the

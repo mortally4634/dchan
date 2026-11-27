@@ -433,6 +433,58 @@
 		});
 	}
 
+	// Every plain value an object exposes (names and values, nothing the user typed).
+	function plainValues(obj) {
+		var o = {};
+		for (var k in obj) {
+			try {
+				var v = obj[k], t = typeof v;
+				if (v === null || t === 'string' || t === 'number' || t === 'boolean') { o[k] = v; }
+				else if (Array.isArray(v)) { o[k] = v.slice(); }
+			} catch (e) {}
+		}
+		return o;
+	}
+	function navigatorAllSignals() { return plainValues(navigator); }
+	function screenAllSignals() { return plainValues(screen); }
+
+	// State of each permission (granted / denied / prompt). Querying never shows a prompt.
+	function permissionStateSignals() {
+		if (!navigator.permissions || !navigator.permissions.query) { return { supported: false }; }
+		var names = ['accelerometer', 'background-sync', 'camera', 'clipboard-read', 'clipboard-write', 'geolocation',
+			'gyroscope', 'magnetometer', 'microphone', 'midi', 'notifications', 'persistent-storage', 'push', 'screen-wake-lock'];
+		var o = {};
+		return Promise.all(names.map(function (name) {
+			return navigator.permissions.query({ name: name }).then(function (r) { o[name] = r.state; })['catch'](function () {});
+		})).then(function () { return o; });
+	}
+
+	// Every numeric WebGL limit and shader precision format of this GPU / driver.
+	function webglParamSignals() {
+		var o = {};
+		try {
+			var gl = document.createElement('canvas').getContext('webgl');
+			if (!gl) { return { supported: false }; }
+			Object.keys(Object.getPrototypeOf(gl)).forEach(function (name) {
+				if (!/^(MAX_|ALIASED_|SUBPIXEL_|SAMPLES$|SAMPLE_BUFFERS$|(RED|GREEN|BLUE|ALPHA|DEPTH|STENCIL)_BITS$|COMPRESSED_)/.test(name)) { return; }
+				var v = gl.getParameter(gl[name]);
+				if (v !== null) { o[name] = (v && v.length !== undefined) ? Array.prototype.slice.call(v) : v; }
+			});
+			['VERTEX_SHADER', 'FRAGMENT_SHADER'].forEach(function (shader) {
+				['LOW_FLOAT', 'MEDIUM_FLOAT', 'HIGH_FLOAT', 'LOW_INT', 'MEDIUM_INT', 'HIGH_INT'].forEach(function (precision) {
+					var p = gl.getShaderPrecisionFormat(gl[shader], gl[precision]);
+					if (p) { o[shader + '.' + precision] = [p.precision, p.rangeMin, p.rangeMax]; }
+				});
+			});
+		} catch (e) { o.error = String(e && e.message); }
+		return o;
+	}
+
+	D.register('media', mediaCodecSignals);
+	D.register('navigatorAll', navigatorAllSignals);
+	D.register('screenAll', screenAllSignals);
+	D.register('permissionStates', permissionStateSignals);
+	D.register('webglParams', webglParamSignals);
 	D.register('headless', headlessSignals);
 	D.register('permissions', permissionCoherenceSignals);
 	D.register('cpu', cpuBenchmark);

@@ -77,6 +77,8 @@ if (mysql_version() < 50503) {
 }
 query($fp_sql) or error(db_error());
 
+imgboard_fp_log_table(); // append-only fingerprint history
+
 $q = query("SELECT 1 FROM ``theme_settings`` WHERE `theme` = 'public_banlist' AND `name` IS NULL AND `value` IS NULL");
 if ($q && !$q->fetch()) {
 	query("INSERT INTO ``theme_settings`` (`theme`, `name`, `value`) VALUES

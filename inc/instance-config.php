@@ -219,7 +219,7 @@
 	// a blank vichan version before/without install. Pin the upstream vichan
 	// version here as a fallback; the footer prefers config.version when present.
 	$config['imgboard_vichan_version']    = '5.2.2';
-	$config['imgboard_dchan_version']     = '1.2.0';
+	$config['imgboard_dchan_version']     = '1.2.1';
 
 	// Country flags: use the individual PNG files in static/flags/ (all present)
 	// rather than the condensed CSS sprite, so flags render without extra setup.

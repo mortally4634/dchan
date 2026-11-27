@@ -737,8 +737,8 @@ if (active_page === 'thread' || active_page === 'index' || active_page === 'cata
 
 				$row = $('<tr>');
 				$row.append(
-					'<td>'+ typeName[obj.type] +'</td>',
-					'<td>'+ val +'</td>',
+					$('<td>').text(typeName[obj.type]),
+					$('<td>').text(val), // copied out of other people's posts
 					$('<td>').append(
 						$('<a>').html('X')
 							.addClass('del-btn')

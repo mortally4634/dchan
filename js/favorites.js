@@ -34,7 +34,7 @@ function handle_boards(data) {
 	data = JSON.parse(data);
 
 	$.each(data, function(k, v) {
-		boards.push('<a href="/'+v+'">'+v+'</a>');
+		boards.push($('<div>').append($('<a>').attr('href', '/' + encodeURIComponent(v)).text(v)).html());
 	})
 
 	if (boards[0]) {

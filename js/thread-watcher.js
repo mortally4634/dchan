@@ -25,12 +25,16 @@ watchlist.render = function(reset) {
 	if (reset && $('#watchlist').length) $('#watchlist').remove();
 	var threads = [];
 	//Read the watchlist and create a new container for each thread.
+	// Stored values hold post subjects as plain text: escape before building HTML.
+	var esc = function(s) {
+		return $('<div>').text(String(s)).html().replace(/"/g, '&quot;');
+	};
 	JSON.parse(localStorage.watchlist).forEach(function(e, i) {
 		//look at line 69, that's what (e) is here.
 		threads.push('<div class="watchlist-inner" id="watchlist-'+i+'">' +
-		'<span>/'+e[0]+'/ - ' +
-		'<a href="'+e[3]+'">'+e[1].replace("thread_", _("Thread #"))+'</a>' +
-		' ('+e[2]+') </span>' +
+		'<span>/'+esc(e[0])+'/ - ' +
+		'<a href="'+esc(e[3])+'">'+esc(String(e[1]).replace("thread_", _("Thread #")))+'</a>' +
+		' ('+esc(e[2])+') </span>' +
 		'<a class="watchlist-remove">X</a>'+
 	'</div>');
 	});

@@ -61,11 +61,11 @@ function Element($templateFile, array $options) {
 
 		if ($config['minify_html'] && preg_match('/\.html$/', $templateFile)) {
 			// Collapse insignificant whitespace, but preserve the literal content
-			// of <textarea> and <pre>: stripping their newlines merges the lines a
+			// of <script> (a "//" comment would swallow the rest), <textarea> and <pre>: stripping their newlines merges the lines a
 			// user sees/edits (e.g. the one-per-line blocklist editor was showing
 			// four entries fused onto a single line).
 			$protected = [];
-			$body = preg_replace_callback('#<(textarea|pre)\b[^>]*>.*?</\1>#is', function ($m) use (&$protected) {
+			$body = preg_replace_callback('#<(textarea|pre|script)\b[^>]*>.*?</\1>#is', function ($m) use (&$protected) {
 				$key = "\x02IMGBOARDKEEP" . count($protected) . "\x02";
 				$protected[$key] = $m[0];
 				return $key;

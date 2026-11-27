@@ -78,7 +78,7 @@ $(document).ready(function() {
 		let selectedText = selection.toString();
 
 		if ($('body').hasClass('debug')) {
-			alert(selectedText);
+			console.log(selectedText); // alert() renders HTML: never give it post text
 		}
 
 		if (selectedText.length == 0) {

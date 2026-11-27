@@ -1114,6 +1114,10 @@ if (isset($_POST['delete'])) {
 		if (!empty($_POST['poll-multiple-choice']))      $poll_flags['multiple_choice'] = 1;
 		if (!empty($_POST['poll-reveal-on-expiration']))  $poll_flags['reveal_on_expiration'] = 1;
 		elseif (!empty($_POST['poll-hide-results']))      $poll_flags['hide_results'] = 1;
+		// A poll is served on its own (poll.php), so it cannot wait in the link queue: no links in it.
+		if (empty($post['mod']) && imgboard_detect_links(implode("\n", $choices)))
+			error('Links are not allowed in poll choices.');
+		$post['poll_text'] = implode("\n", $choices); // for the word filter
 		$poll_id = create_poll($choices, $poll_flags);
 		$post['body'] .= "\r\n<tinyboard poll>" . $poll_id . "</tinyboard>";
 	}
@@ -1369,8 +1373,8 @@ if (isset($_POST['delete'])) {
 
 	// Imgboard: reject posts containing an active blocked word or link
 	// (moderators are exempt). Clean up any uploaded file first.
-	if (empty($post['mod']) && function_exists('imgboard_blocklist_match')
-			&& ($block_msg = imgboard_blocklist_match($post['body_nomarkup'])) !== null) {
+	if (empty($post['mod']) && function_exists('imgboard_blocklist_match_post')
+			&& ($block_msg = imgboard_blocklist_match_post($post)) !== null) {
 		undoImage($post);
 		// Auto-ban (24h, site-wide) the poster, then show them the ban/appeal screen.
 		if (function_exists('imgboard_blocklist_autoban')) {
@@ -1420,6 +1424,12 @@ if (isset($_POST['delete'])) {
 	$post['fp_hash'] = (isset($_COOKIE['imgboard_fp']) && preg_match('/^[a-f0-9]{8,32}$/', $_COOKIE['imgboard_fp']))
 		? $_COOKIE['imgboard_fp'] : null;
 
+	// Fingerprint history: what every poster's browser sent, JavaScript or not.
+	if (function_exists('imgboard_fp_log')) {
+		imgboard_fp_log('post', ['cookie_id' => $post['cookie_id'], 'hwid' => $post['hwid'],
+			'fp_hash' => $post['fp_hash'], 'stable_hash' => $post['fp_hash'], 'board' => $board['uri']]);
+	}
+
 	// VPN/proxy flag (shown next to the IP for mods) + per-post Poster ID opt-in.
 	$post['is_vpn'] = (function_exists('imgboard_ip_is_vpn') && imgboard_ip_is_vpn($_SERVER['REMOTE_ADDR'])) ? 1 : 0;
 	$post['show_poster_id'] = isset($_POST['show_id']) ? 1 : 0;
@@ -1467,7 +1477,7 @@ if (isset($_POST['delete'])) {
 	// external link -> LPA), notify staff (offline push; open tabs poll it themselves).
 	if (empty($post['mod']) && function_exists('imgboard_notify_pending')
 			&& (!empty($post['has_file'])
-				|| (function_exists('imgboard_extract_links') && imgboard_extract_links((string)($post['body'] ?? ''))))) {
+				|| (function_exists('imgboard_post_has_link') && imgboard_post_has_link($post)))) {
 		imgboard_notify_pending($board['uri']);
 	}
 

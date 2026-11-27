@@ -947,17 +947,11 @@ function post(array $post) {
 	// Posts without files, and posts made by moderators, are approved (1).
 	$query->bindValue(':approved', (!empty($post['has_file']) && empty($post['mod'])) ? 0 : 1, PDO::PARAM_INT);
 
-	// Link Pending approval: a post whose body contains an external link
-	// (markup_url emits rel="nofollow" for those) starts with its link(s)
-	// unapproved, so they are covered by the placeholder until a mod approves.
-	$has_link = isset($post['body']) && strpos($post['body'], 'rel="nofollow"') !== false;
-	// Imgboard: also hold scheme-less / obfuscated links that never render as an
-	// anchor (bare "evil.com", "evil(dot)com", hxxp://), which rel="nofollow" misses.
-	if (!$has_link && function_exists('imgboard_detect_links')) {
-		$scan = (isset($post['body_nomarkup']) && $post['body_nomarkup'] !== '')
-			? $post['body_nomarkup'] : (string)($post['body'] ?? '');
-		$has_link = $scan !== '' && imgboard_detect_links($scan) !== [];
-	}
+	// Link Pending approval: a post that links, or names a site, anywhere a reader can see it
+	// (body, subject, name, email, embed, filenames; plain or obfuscated) is held.
+	$has_link = function_exists('imgboard_post_has_link')
+		? imgboard_post_has_link($post)
+		: isset($post['body']) && strpos($post['body'], 'rel="nofollow"') !== false;
 	$query->bindValue(':approved_link', ($has_link && empty($post['mod'])) ? 0 : 1, PDO::PARAM_INT);
 
 	// Basic stuff

@@ -83,7 +83,7 @@ function addThumb(file) {
 		.append(
 			$('<div>').addClass('remove-btn').html('✖'),
 			$('<div>').addClass('file-tmb'),
-			$('<div>').addClass('tmb-filename').html(fileName)
+			$('<div>').addClass('tmb-filename').text(fileName)
 		)
 		.appendTo('.file-thumbs');
 
@@ -93,7 +93,7 @@ function addThumb(file) {
 		var objURL = window.URL.createObjectURL(file);
 		$fileThumb.css('background-image', 'url('+ objURL +')');
 	} else {
-		$fileThumb.html('<span>' + fileExt.toUpperCase() + '</span>');
+		$fileThumb.empty().append($('<span>').text(String(fileExt || '').toUpperCase()));
 	}
 }
 

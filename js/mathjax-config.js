@@ -12,7 +12,9 @@ window.MathJax = {
 	tex: {
 		inlineMath: [['\\(', '\\)']],
 		displayMath: [['\\[', '\\]']],
-		processEscapes: true
+		processEscapes: true,
+		// No \require / autoload: they let a post load and enable further TeX packages (links, styles).
+		packages: {'[-]': ['require', 'autoload']}
 	},
 	svg: {
 		fontCache: 'global'
@@ -20,9 +22,22 @@ window.MathJax = {
 	options: {
 		// Don't scan code/pre or anything explicitly opted out.
 		skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'],
-		ignoreHtmlClass: 'no-mathjax'
+		// Only the spans the server makes from [math] / [eqn] are typeset, nothing else on the page.
+		ignoreHtmlClass: '.*',
+		processHtmlClass: 'math-tex'
 	},
 	startup: {
-		typeset: true
+		typeset: true,
+		ready: function () {
+			MathJax.startup.defaultReady();
+			// \mmlToken can hang href="javascript:..." on a symbol: maths in posts gets no
+			// links and no inline styles (which could fetch remote addresses).
+			MathJax.startup.document.inputJax[0].postFilters.add(function (arg) {
+				arg.data.root.walkTree(function (node) {
+					var set = node.attributes && node.attributes.getAllAttributes();
+					if (set) { delete set.href; delete set.style; }
+				});
+			});
+		}
 	}
 };

@@ -81,7 +81,7 @@
 							<strong>Link(s) in this post (staff only):</strong>
 							<ul style="margin:4px 0 0;">
 								{% for l in post.preview_links %}
-									<li><a href="{{ l|e }}" target="_blank" rel="noreferrer nofollow">{{ l|e }}</a></li>
+									<li>{% if l matches '#^https?://#i' %}<a href="{{ l|e }}" target="_blank" rel="noreferrer nofollow">{{ l|e }}</a>{% else %}<code>{{ l|e }}</code>{% endif %}</li>
 								{% endfor %}
 							</ul>
 						</div>

@@ -121,10 +121,10 @@
 					unset($post['youtube']);
 				}
 				if (!$mod && !$post['approved_link']) {
-					$covered = (object)['body' => $post['body'], 'approved_link' => 0];
+					$covered = (object)$post;
 					cover_pending_links($covered);
-					$post['body'] = $covered->body;
-					$post['body_nomarkup'] = strip_tags($covered->body);
+					$post = (array)$covered;
+					unset($post['youtube']);
 				}
 
 				if (empty($post['image_count'])) $post['image_count'] = 0;

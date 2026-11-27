@@ -42,6 +42,24 @@
 		return el;
 	}
 
+	// Stored HTML may come from a lower rank. DOMParser builds an inert document (nothing
+	// loads or runs); drop everything that could run before it reaches the live page.
+	function clean(html) {
+		var doc = new DOMParser().parseFromString(html, 'text/html');
+		doc.querySelectorAll('script,iframe,frame,object,embed,form,meta,link,base,style,svg,math,template,noscript')
+			.forEach(function (n) { n.remove(); });
+		doc.querySelectorAll('*').forEach(function (el) {
+			Array.from(el.attributes).forEach(function (a) {
+				var value = a.value.replace(/[\x00-\x20]+/g, '').toLowerCase();
+				if (/^on/i.test(a.name) || a.name === 'srcdoc' || a.name === 'formaction'
+						|| /^(javascript:|vbscript:|data:(?!image\/))/.test(value)) {
+					el.removeAttribute(a.name);
+				}
+			});
+		});
+		return doc.body.innerHTML;
+	}
+
 	function upgrade(textarea) {
 		textarea.style.display = 'none';
 		textarea.classList.add('wysiwyg-source');
@@ -52,7 +70,7 @@
 
 		surface.setAttribute('contenteditable', 'true');
 		surface.setAttribute('spellcheck', 'true');
-		surface.innerHTML = textarea.value;
+		surface.innerHTML = clean(textarea.value);
 
 		// Build the toolbar.
 		BUTTONS.forEach(function (b) {

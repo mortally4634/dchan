@@ -401,19 +401,46 @@ function mark_pending_files($obj): void {
 /**
  * Link Pending approval.
  *
- * If the post's `approved_link` column is 0, replace every external link in
- * its (already marked-up) body with a "[Link Pending Approval]" label, covering the
- * link until a mod approves it. External links are the ones markup_url emits
- * with rel="nofollow"; internal >> references are left alone.
+ * If the post's `approved_link` column is 0, nothing that links or names a site may be
+ * shown until a mod approves it. Anchors are replaced in place; a link written any other
+ * way (evil(dot)com) cannot be cut out reliably, so then the whole field is covered.
  */
 function cover_pending_links($obj): void {
-	global $config;
 	// Don't cover for moderators: they need to see the real link to approve it.
-	if (!empty($obj->mod) || !isset($obj->approved_link) || $obj->approved_link || empty($obj->body)) {
+	if (!empty($obj->mod) || !isset($obj->approved_link) || $obj->approved_link) {
 		return;
 	}
-	$cover = '<span class="link-pending">[Link Pending Approval]</span>';
-	$obj->body = preg_replace('#<a\b[^>]*\brel="nofollow"[^>]*>.*?</a>#is', $cover, $obj->body);
+	$label = '[Link Pending Approval]';
+	$cover = '<span class="link-pending">' . $label . '</span>';
+	$linky = fn($text) => (string)$text !== '' && imgboard_detect_links((string)$text) !== [];
+
+	$covered_body = false;
+	if (!empty($obj->body)) {
+		$obj->body = preg_replace('#<a\b[^>]*\brel="nofollow"[^>]*>.*?</a>#is', $cover, $obj->body);
+		if ($linky(imgboard_visible_text($obj->body))) {
+			$obj->body = $cover;
+			$covered_body = true;
+		}
+	}
+	// The raw source feeds page descriptions, feeds and the API. Keep the modifier tags.
+	if (!empty($obj->body_nomarkup) && ($covered_body || $linky(remove_modifiers($obj->body_nomarkup)))) {
+		preg_match_all('@<tinyboard ([\w\s]+)>.*?</tinyboard>@us', $obj->body_nomarkup, $m);
+		$obj->body_nomarkup = $label . ($m[0] ? "\n" . implode("\n", $m[0]) : '');
+	}
+	foreach (['subject', 'name'] as $field) {
+		if (!empty($obj->$field) && $linky($obj->$field)) $obj->$field = $label;
+	}
+	if (!empty($obj->email) && $linky($obj->email)) {
+		$obj->email = '';
+	}
+	if (!empty($obj->embed)) {
+		$obj->embed = $cover;
+	}
+	if (!empty($obj->files) && is_array($obj->files)) {
+		foreach ($obj->files as $file) {
+			if (is_object($file) && !empty($file->filename) && $linky($file->filename)) $file->filename = $file->file;
+		}
+	}
 }
 
 class Post {

@@ -124,7 +124,7 @@ $(function(){
 
       var tag;
       if (variant == 'desktop') {
-        tag = $("<a href='"+((storage()[board].slugs && storage()[board].slugs[tid]) || (modRoot+board+"/res/"+tid+".html"))+"'><span>#"+tid+"</span><span class='cb-uri watch-remove'>"+newposts+"</span>");
+        tag = $("<a><span>#"+tid+"</span><span class='cb-uri watch-remove'>"+newposts+"</span></a>");
 	tag.find(".watch-remove").mouseenter(function() {
           this.oldval = $(this).html();
           $(this).css("min-width", $(this).width());
@@ -135,9 +135,12 @@ $(function(){
         })
       }
       else if (variant == 'mobile') {
-        tag = $("<a href='"+((storage()[board].slugs && storage()[board].slugs[tid]) || (modRoot+board+"/res/"+tid+".html"))+"'><span>#"+tid+"</span><span class='cb-uri'>"+newposts+"</span>"
-               +"<span class='cb-uri watch-remove'><i class='fa fa-minus'></i></span>");	
+        tag = $("<a><span>#"+tid+"</span><span class='cb-uri'>"+newposts+"</span>"
+               +"<span class='cb-uri watch-remove'><i class='fa fa-minus'></i></span></a>");	
       }
+
+      // the saved slug holds the page address (query string included): set it as a value, never as HTML
+      tag.attr('href', (storage()[board].slugs && storage()[board].slugs[tid]) || (modRoot+board+"/res/"+tid+".html"));
 
       tag.attr('data-thread', tid)
         .addClass("cb-menuitem")

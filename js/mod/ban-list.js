@@ -7,6 +7,11 @@ var banlist_init = function(token, my_boards, inMod) {
 
   var time = function() { return Date.now()/1000|0; }
 
+  // reason / message are HTML the server already escaped; the other fields are plain text.
+  var esc = function(s) {
+    return $('<div>').text(s == null ? '' : String(s)).html().replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  };
+
   $.getJSON(inMod ? ("?/bans.json/"+token) : token, function(t) {
     $("#banlist").on("new-row", function(e, drow, el) {
       var sel = selected[drow.id];
@@ -40,7 +45,7 @@ var banlist_init = function(token, my_boards, inMod) {
         else return add + "-" + suf;
     };
     var fmt_board = function(f) {
-        if (f.board) return "/"+f.board+"/";
+        if (f.board) return "/"+esc(f.board)+"/";
 	else return "<em>"+_("all")+"</em>";
     };
 
@@ -83,9 +88,9 @@ var banlist_init = function(token, my_boards, inMod) {
         }
 
         if (inMod && f.single_addr && !f.masked) {
-	  return pre+"<a href='?/IP/"+f.mask+"'>"+f.mask+"</a>";
+	  return pre+"<a href='?/IP/"+esc(f.mask)+"'>"+esc(f.mask)+"</a>";
 	}
-	return pre+f.mask;
+	return pre+esc(f.mask);
       } },
       reason: {name: _("Reason"), width: "calc(100% - 870px - 6 * 4px)", fmt: fmt_reason},
       board: {name: _("Board"), width: "60px", fmt: fmt_board},
@@ -99,9 +104,9 @@ var banlist_init = function(token, my_boards, inMod) {
   return formattedDate + ((f.expires < time()) ? "" : " <small>"+_("in ")+until(f.expires|0)+"</small>");
       } },
       username: {name: _("Staff"), width: "100px", fmt: function(f) {
-	var pre='',suf='',un=f.username;
+	var pre='',suf='',un=esc(f.username);
 	if (inMod && f.username && f.username != '?' && !f.vstaff) {
-	  pre = "<a href='?/new_PM/"+f.username+"'>";
+	  pre = "<a href='?/new_PM/"+esc(f.username)+"'>";
 	  suf = "</a>";
 	}
 	if (!f.username) {
@@ -112,7 +117,7 @@ var banlist_init = function(token, my_boards, inMod) {
       id: {
          name: (inMod)?_("Edit"):"&nbsp;", width: (inMod)?"35px":"0px", fmt: function(f) {
 	 if (!inMod) return '';
-	 return "<a href='?/edit_ban/"+f.id+"'>Edit</a>";
+	 return "<a href='?/edit_ban/"+(f.id|0)+"'>Edit</a>";
        } }
       };
     }

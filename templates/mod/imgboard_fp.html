@@ -39,6 +39,7 @@
 	<p class="fp-actions">
 		<button type="button" class="fp-btn" onclick="imgboardCopyReport(this)">Copy to clipboard</button>
 		<a class="fp-btn" href="?/fp/{{ hash|e }}&amp;format=txt" download="fingerprint-{{ hash|e }}.txt">Download .txt</a>
+		{% if can_raw %}<a class="fp-btn" href="?/fp/{{ hash|e }}&amp;format=json" download="fingerprint-{{ hash|e }}.json">Full history .json</a>{% endif %}
 		<span class="unimportant">({{ can_raw ? 'full report' : 'moderation data only' }} - exactly what your role may see)</span>
 	</p>
 	<textarea id="fp-report" readonly aria-hidden="true" style="position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;">{{ report_text|e }}</textarea>

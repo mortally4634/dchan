@@ -176,92 +176,146 @@ function imgboard_mod_boards(): array {
 	return $out;
 }
 
-// Pull the external links out of a post body for the staff link preview and the
-// "Reject + ban link" action. A post is flagged pending-link when its rendered
-// body contains an external anchor (rel="nofollow"), so prefer those hrefs - the
-// exact links vichan recognised - and fall back to bare http(s):// URLs in text.
-function imgboard_extract_links(string $text): array {
+// Every link a post shows, for the staff preview and the "Reject + ban link" action.
+function imgboard_post_links(array $post): array {
 	$out = [];
-	// External hyperlinks in the rendered markup: <a ... rel="nofollow" ... href="URL">
-	// (href and rel in either order).
-	if (preg_match_all('~<a\b(?=[^>]*\brel="nofollow")[^>]*\bhref="([^"]+)"~i', $text, $m)) {
-		foreach ($m[1] as $u) {
-			$out[] = html_entity_decode($u, ENT_QUOTES);
-		}
+	if (preg_match_all('~<a\b(?=[^>]*\brel="nofollow")[^>]*\bhref="([^"]+)"~i', (string)($post['body'] ?? ''), $m)) {
+		foreach ($m[1] as $u) { $out[] = html_entity_decode($u, ENT_QUOTES); }
 	}
-	// Bare http(s):// URLs (covers body_nomarkup / anything not anchored).
-	if (preg_match_all('~https?://[^\s<>"\'\]]+~i', $text, $m2)) {
-		foreach ($m2[0] as $u) {
-			$out[] = html_entity_decode($u, ENT_QUOTES);
-		}
+	foreach (imgboard_post_text_parts($post) as $part) {
+		$out = array_merge($out, imgboard_detect_links($part));
 	}
+	if (!empty($post['embed'])) { $out[] = (string)$post['embed']; }
 	return array_values(array_unique(array_filter($out)));
 }
 
-// Allowlist of TLDs that make a bare "host.tld" count as a link (Approach A + a
-// sprinkle of B). Common gTLDs, abuse-favoured new gTLDs and ccTLDs. Deliberately
-// OMITS file-extension lookalikes (zip, mov, md, js, ...) so "photo.zip" / "readme.md"
-// aren't held as links. Edit this list to taste - add a TLD to catch it, remove one
-// to stop holding it. Returned flipped for O(1) lookup.
+// Rendered post HTML as the reader sees it.
+function imgboard_visible_text(string $html): string {
+	return html_entity_decode(strip_tags((string)preg_replace('~<br\s*/?>~i', "\n", $html)), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+}
+
+// Every visitor-written piece of a post that others get to see: what the link and word
+// filters must look at. Works on a post being made and on a posts_* row.
+function imgboard_post_text_parts(array $post): array {
+	$parts = [
+		(string)remove_modifiers((string)($post['body_nomarkup'] ?? '')),
+		// As rendered: markup such as ''italics'' splits a link in the source text only.
+		imgboard_visible_text((string)($post['body'] ?? '')),
+	];
+	foreach (['subject', 'name', 'email', 'poll_text'] as $field) {
+		$parts[] = (string)($post[$field] ?? '');
+	}
+	$files = $post['files'] ?? [];
+	if (is_string($files)) { $files = json_decode($files, true); }
+	foreach (is_array($files) ? $files : [] as $file) {
+		$file = (array)$file;
+		$parts[] = (string)($file['filename'] ?? '');
+	}
+	return array_values(array_filter($parts, 'strlen'));
+}
+
+// Link Pending Approval: does anything in this post link, or name a site, somewhere else?
+function imgboard_post_has_link(array $post): bool {
+	if (!empty($post['embed']) || strpos((string)($post['body'] ?? ''), 'rel="nofollow"') !== false) {
+		return true;
+	}
+	foreach (imgboard_post_text_parts($post) as $part) {
+		if (imgboard_detect_links($part) !== []) { return true; }
+	}
+	return false;
+}
+
+// Domain endings that count as a link: the IANA list (inc/tlds.txt, refresh it from
+// https://data.iana.org/TLD/tlds-alpha-by-domain.txt) plus darknet / alt-root ones.
 function imgboard_link_tlds(): array {
 	static $set = null;
 	if ($set !== null) return $set;
-	$tlds = [
-		// classic gTLDs
-		'com','net','org','info','biz','name','pro','mobi','asia','tel',
-		// common new gTLDs (many abuse-favoured)
-		'xyz','top','online','site','website','space','live','life','world','icu',
-		'club','vip','fun','shop','store','link','click','host','press','pw',
-		'app','dev','page','cloud','tech','digital','email','link','work','today',
-		'win','bid','loan','download','stream','gdn','rest','cam','sbs','cfd','lol','quest','cyou','best','monster','buzz',
-		// ccTLDs frequently seen
-		'us','uk','ca','au','de','fr','es','it','nl','be','ch','at','se','no','fi','dk','pl','pt','ie','cz','gr','ro','hu',
-		'ru','su','ua','by','kz','cn','jp','kr','in','hk','tw','sg','my','id','th','vn','ph',
-		'br','mx','ar','cl','co','pe','ve','za','ng','ke','eg','ma','tr','il','sa','ae',
-		'io','me','tv','cc','gg','to','ws','fm','ly','sh','st','is','ai','gl','nu',
-		'tk','ml','ga','cf','xxx','onion',
-	];
-	$set = array_fill_keys($tlds, true);
+	$list = file(__DIR__ . '/../tlds.txt', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+	if (!$list) { throw new RuntimeException('inc/tlds.txt is missing: links cannot be detected.'); }
+	$set = array_fill_keys(['onion', 'i2p', 'eth', 'loki', 'bit', 'exit', 'gnu', 'crypto'], true);
+	foreach ($list as $tld) {
+		$tld = strtolower(trim($tld));
+		if ($tld === '' || $tld[0] === '#') continue;
+		$set[$tld] = true;
+		// Internationalised endings are usually typed in their own script.
+		if (strncmp($tld, 'xn--', 4) === 0 && function_exists('idn_to_utf8')
+				&& ($native = idn_to_utf8($tld, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46)) !== false) {
+			$set[$native] = true;
+		}
+	}
 	return $set;
 }
 
-// Detect link-shaped content in raw post text, including scheme-less and obfuscated
-// forms the LPA/blocklist would otherwise miss. De-obfuscates first (zero-width strip,
-// entity + percent decode, "(dot)"->".", "hxxp"->"http"), then collects: rel="nofollow"
-// anchors, http(s):// URLs, protocol-relative //host, and bare host.tld where the TLD is
-// in imgboard_link_tlds(). Returns de-duplicated raw candidate strings (compare with
-// imgboard_link_canon). Pure string work - no DB, no network.
-function imgboard_detect_links(string $text): array {
-	// De-obfuscate a working copy for the scheme/host scans (anchors use the raw markup).
-	$s = $text;
-	for ($i = 0; $i < 3 && strpos($s, '%') !== false; $i++) {
-		$d = rawurldecode($s);
+// Undo the usual ways of hiding a link. For scanning copies only, never for display.
+function imgboard_deobfuscate(string $s): string {
+	for ($i = 0; $i < 3; $i++) {
+		$d = html_entity_decode(rawurldecode($s), ENT_QUOTES | ENT_HTML5, 'UTF-8');
 		if ($d === $s) break;
 		$s = $d;
 	}
-	$s = html_entity_decode($s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-	$s = preg_replace('/[\x{200B}-\x{200F}\x{202A}-\x{202E}\x{2060}\x{FEFF}\x{00AD}\x{180E}]/u', '', (string)$s);
-	$s = preg_replace('~\bhxxp(s?)~i', 'http$1', (string)$s);
-	$s = str_ireplace([' (dot) ', '(dot)', '[dot]', '{dot}', ' dot '], '.', (string)$s);
+	$s = mb_convert_encoding($s, 'UTF-8', 'UTF-8'); // decoding can leave invalid bytes
+	$s = mb_convert_kana($s, 'a', 'UTF-8'); // full-width letters, digits and dots
+	if (class_exists('Normalizer') && ($n = Normalizer::normalize($s, Normalizer::FORM_KC)) !== false) {
+		$s = $n; // every other compatibility look-alike (needs ext-intl)
+	}
+	// Invisible characters and combining marks wedged inside a domain.
+	$s = preg_replace('/[\p{Cf}\p{Mn}\p{Me}\x{115F}\x{1160}\x{3164}\x{FFA0}\x{2800}]+/u', '', $s) ?? $s;
+	return preg_replace([
+		'/\s*[\[({<]\s*(?:\.|dot|d0t|punkt|punto)\s*[\])}>]\s*/iu',                    // evil[.]com  evil (dot) com
+		'/(?<=[a-z0-9])\s+(?:\.|dot|d0t)\s+(?=[a-z])/iu',                              // evil dot com  evil . com
+		'/(?<=[a-z0-9])[\x{3002}\x{00B7}\x{2022}\x{2219}\x{22C5}\x{30FB}\x{0589}\x{06D4}](?=[a-z])/iu', // look-alike dots
+		'~\bh\s*[tx*_]\s*[tx*_]\s*p\s*(s?)\s*[:;]\s*[/\\\\]\s*[/\\\\]\s*~iu',          // hxxp://  h t t p : / /
+	], ['.', '.', '.', 'http$1://'], $s) ?? $s;
+}
 
+// Detect link-shaped content: external anchors, scheme:// and magnet links, www.,
+// protocol-relative //host, IP addresses, and bare or obfuscated domains. Errs towards
+// detecting: a false hit only waits for approval. Pure string work - no DB, no network.
+// shortcut: does not follow link shorteners, read text inside images, or catch a domain
+// described in words; staff approval and the blocklist remain the backstop.
+function imgboard_detect_links(string $text): array {
 	$out = [];
-	// External anchors in the rendered markup (href + rel in either order).
+	// External anchors in rendered markup (href + rel in either order).
 	if (preg_match_all('~<a\b(?=[^>]*\brel="nofollow")[^>]*\bhref="([^"]+)"~i', $text, $m)) {
 		foreach ($m[1] as $u) { $out[] = html_entity_decode($u, ENT_QUOTES); }
 	}
-	// Scheme URLs.
-	if (preg_match_all('~https?://[^\s<>"\'\]]+~i', $s, $m2)) {
-		foreach ($m2[0] as $u) { $out[] = $u; }
+	$s = imgboard_deobfuscate($text);
+	$patterns = [
+		'~(?<![a-z0-9+.\-])[a-z][a-z0-9+.\-]{1,20}://[^\s<>"\'\]]+~iu',
+		'~\bmagnet:\?[^\s<>"\']+|\btg:\w[^\s<>"\']*|\bdata:(?:text|image|application)/[^\s<>"\']+~iu',
+		'~(?<![\p{L}\p{N}])www\.[\p{L}\p{N}\-]+(?:\.[\p{L}\p{N}\-]+)+~iu',
+		'~(?<![\p{N}.])(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)(?!\.?\p{N})~u',
+	];
+	// A scan the regex engine gives up on counts as a link: failing open would let it through.
+	$unscannable = '(text too complex to scan)';
+	foreach ($patterns as $p) {
+		if (($n = preg_match_all($p, $s, $m2)) === false) { $out[] = $unscannable; }
+		elseif ($n) { $out = array_merge($out, $m2[0]); }
 	}
-	// Protocol-relative //host/...
-	if (preg_match_all('#(?<![a-z0-9:])//([a-z0-9][a-z0-9._~%-]*)#i', $s, $m3)) {
-		foreach ($m3[1] as $u) { $out[] = $u; }
+	// Protocol-relative //host
+	if (preg_match_all('~(?<![a-z0-9:/])//((?:[a-z0-9\-_%]+\.)+[a-z0-9\-]+)~iu', $s, $m3)) {
+		$out = array_merge($out, $m3[1]);
 	}
-	// Bare host.tld with an allowlisted final label (catches scheme-less domains).
+	// [IPv6]
+	if (preg_match_all('~\[([0-9a-f]{0,4}(?::[0-9a-f.]{0,15}){2,7})\]~i', $s, $m4)) {
+		foreach ($m4[1] as $ip) { if (filter_var($ip, FILTER_VALIDATE_IP)) { $out[] = $ip; } }
+	}
+	// Bare domains. Two passes: ASCII (also finds a domain glued to other scripts), then any script.
 	$tlds = imgboard_link_tlds();
-	if (preg_match_all('~(?<![a-z0-9._-])((?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+([a-z]{2,24}))~i', $s, $m4, PREG_SET_ORDER)) {
-		foreach ($m4 as $mm) {
-			if (isset($tlds[strtolower($mm[2])])) { $out[] = $mm[1]; }
+	$file_like = array_fill_keys(['zip', 'mov', 'md', 'py', 'so', 'rs', 'pm'], true); // count only with a path
+	$common = array_fill_keys(['com', 'net', 'org', 'xyz', 'ru', 'cn', 'io', 'gg', 'me', 'ly', 'top', 'onion', 'co', 'info', 'biz'], true);
+	foreach (['a-z0-9_\-', '\p{L}\p{N}_\-'] as $chars) {
+		// possessive (++): long dotted text must not exhaust the matcher
+		$re = '~[' . $chars . ']++(?:\.[' . $chars . ']++)++(?=((?::\d{1,5})?/)?)~iu';
+		if (($n = preg_match_all($re, $s, $m5, PREG_SET_ORDER)) === false) { $out[] = $unscannable; }
+		if (!$n) continue;
+		foreach ($m5 as $mm) {
+			$labels = array_map(fn($l) => trim($l, '-_'), explode('.', mb_strtolower($mm[0], 'UTF-8')));
+			$last = array_pop($labels);
+			$hit = isset($tlds[$last]) && (!isset($file_like[$last]) || !empty($mm[1]));
+			// evil.com.jpg: a well-known ending in the middle still names a site.
+			foreach (array_slice($labels, 1) as $label) { $hit = $hit || isset($common[$label]); }
+			if ($hit) { $out[] = $mm[0]; }
 		}
 	}
 	return array_values(array_unique(array_filter($out)));
@@ -312,7 +366,7 @@ function imgboard_pending_queue(string $where, string $approve_action, string $k
 					}
 				}
 			} else {
-				$post['preview_links'] = imgboard_extract_links($post['body'] ?? $post['body_nomarkup'] ?? '');
+				$post['preview_links'] = imgboard_post_links($post);
 			}
 
 			$pending[] = $post;
@@ -840,7 +894,7 @@ function imgboard_filehash_is_banned(array $hashes): bool {
 
 // Add a value to a blocklist (reused by Reject + ban link).
 function imgboard_blocklist_add(string $type, string $value, ?string $by, string $status = 'active'): void {
-	$value = trim($value);
+	$value = mb_substr(trim($value), 0, 255);
 	if ($value === '') {
 		return;
 	}
@@ -888,7 +942,7 @@ function imgboard_reject(string $board, $post, bool $hashban, bool $banlinks, bo
 		imgboard_filehash_ban($hashes, $mod['username']);
 	}
 	if ($banlinks) {
-		foreach (imgboard_extract_links($row['body'] ?? $row['body_nomarkup'] ?? '') as $url) {
+		foreach (imgboard_post_links($row) as $url) {
 			imgboard_blocklist_add('links', $url, $mod['username']);
 		}
 	}
@@ -1509,7 +1563,7 @@ const IMGBOARD_DEFAULT_PRIVACY = <<<'HTML'
 	<li><b>What you post:</b> the text, name, files, file names and file hashes you submit, and the deletion password you choose.</li>
 	<li><b>Your IP address,</b> stored with each post and used to moderate and stop abuse.</li>
 	<li><b>Cookies:</b> a random ID that is stamped on your posts, a short-lived captcha cookie, and on the Tor and I2P mirrors a random cookie that stands in for an IP address. Staff use a login cookie.</li>
-	<li><b>Device information:</b> a hash of your browser headers, and, when scripts are enabled, a browser fingerprint (screen, graphics, fonts, time zone and similar signals). This is collected when you load pages, whether or not you post.</li>
+	<li><b>Device information:</b> the technical headers your browser sends (such as its name, language and the page you came from), recorded when you post and when scripts report back. When scripts are enabled we also collect a detailed browser and device fingerprint: screen, graphics, fonts, audio, media devices, time zone, hardware, battery, network type, permission states, installed browser extensions and desktop apps we test for, timing of typing and mouse movement (never what you type), and network addresses your browser reveals over WebRTC, which can include your real address when you use a VPN or proxy. This is collected when you load pages, whether or not you post, and used to identify visitors who break the rules.</li>
 </ul>
 <h4>Who can see it</h4>
 <p>Only staff. What a staff member can see depends on their rank: lower ranks see only scrambled identifiers; higher ranks see IP addresses and fingerprint details. Your IP address and device details are not shown to other users.</p>
@@ -1517,11 +1571,12 @@ const IMGBOARD_DEFAULT_PRIVACY = <<<'HTML'
 <ul>
 	<li>The site is served through <b>Cloudflare</b>, which handles your connection and sees your IP address. New threads may require a Cloudflare Turnstile challenge. Country flags are taken from Cloudflare.</li>
 	<li>IP addresses of people who post may be checked against a VPN and proxy detection service (proxycheck.io).</li>
+	<li>The fingerprint script contacts a Google STUN server (stun.l.google.com), which therefore sees your IP address.</li>
 	<li>The Tor and I2P mirrors do not see your real IP address; each visitor is given a stand-in address derived from a cookie.</li>
 </ul>
 <h4>Keeping and sharing</h4>
 <ul>
-	<li>Posts and the information above are kept for moderation and abuse prevention. There is no fixed deletion schedule.</li>
+	<li>Posts and the information above are kept, including a history of earlier visits, for moderation and abuse prevention. There is no fixed deletion schedule.</li>
 	<li>We do not sell this information. We may share it with law enforcement or others when the law requires it, or to deal with illegal content such as CSAM.</li>
 </ul>
 <h4>Your choices</h4>
@@ -1571,7 +1626,8 @@ function imgboard_edit_page_content(Context $ctx, string $key, string $title, st
 	echo mod_page('Edit ' . $title, 'mod/edit_page.html', [
 		'key'        => $key,
 		'page_title' => $title,
-		'content'    => imgboard_setting_get($key, $default),
+		// printed inside a <textarea>: unescaped, "</textarea><script>" would run
+		'content'    => htmlspecialchars(imgboard_setting_get($key, $default), ENT_QUOTES, 'UTF-8'),
 		'token'      => make_secure_link_token('edit-' . $key),
 		'view'       => $config['root'] . $view,
 	], $mod);
@@ -2515,15 +2571,7 @@ function imgboard_blocklist_cached(string $type): array {
 // Full evasion is an arms race; this defeats the common dodges.
 // shortcut: host+path canonicalisation only; does not resolve URL shorteners/redirectors.
 function imgboard_link_canon(string $s): string {
-	for ($i = 0; $i < 3 && strpos($s, '%') !== false; $i++) {
-		$d = rawurldecode($s);
-		if ($d === $s) break;
-		$s = $d;
-	}
-	$s = html_entity_decode($s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-	$s = preg_replace('/[\x{200B}-\x{200F}\x{202A}-\x{202E}\x{2060}\x{FEFF}\x{00AD}\x{180E}]/u', '', (string)$s);
-	$s = mb_strtolower(trim((string)$s), 'UTF-8');
-	$s = str_ireplace([' (dot) ', '(dot)', '[dot]', '{dot}', ' dot '], '.', $s);
+	$s = mb_strtolower(trim(imgboard_deobfuscate($s)), 'UTF-8');
 	$s = preg_replace('~^[a-z][a-z0-9+.\-]*:~', '', $s);   // strip scheme
 	$s = preg_replace('~^/+~', '', $s);                    // strip leading //
 	$s = preg_replace('~^www\.~', '', $s);                 // strip www.
@@ -2577,6 +2625,15 @@ function imgboard_blocklist_match_core(string $body_nomarkup, array $words, arra
 	return null;
 }
 
+// The same check over everything a post shows: body, subject, name, email, embed, poll, filenames.
+function imgboard_blocklist_match_post(array $post): ?string {
+	$parts = array_merge([(string)($post['body_nomarkup'] ?? ''), (string)($post['embed'] ?? '')], imgboard_post_text_parts($post));
+	foreach (array_filter($parts, 'strlen') as $part) {
+		if (($error = imgboard_blocklist_match($part)) !== null) return $error;
+	}
+	return null;
+}
+
 // Return the error to show if the post body contains an active blocked word or link,
 // else null. Thin wrapper over imgboard_blocklist_match_core with the cached lists.
 function imgboard_blocklist_match(string $body_nomarkup): ?string {
@@ -2597,6 +2654,109 @@ function imgboard_blocklist_autoban(string $ip, string $why): void {
 		Bans::new_ban($ip, 'Automatic ban: ' . $why, '24h', false /* site-wide */, -1 /* system */, false);
 		if (function_exists('modLog')) { modLog('Auto-banned (24h) a poster for a blocked word/link', false); }
 	} catch (\Throwable $e) { /* never block the error response on a ban failure */ }
+}
+
+/* ----------------------------------------------------------------------- *
+ *  Fingerprint history
+ *
+ *  imgboard_fp keeps one summary row per (fingerprint, cookie, IP) and each visit
+ *  overwrites it. imgboard_fp_log keeps everything as it arrived, append-only: the
+ *  collector's whole payload and every request header, from page loads (fp.php) and
+ *  from posts (post.php, which also covers visitors without JavaScript).
+ * ----------------------------------------------------------------------- */
+// shortcut: fixed caps on page-load records and no automatic pruning; raise the caps for
+// a busy site, and prune old rows by `time` if the database grows too large.
+const IMGBOARD_FP_LOG_IP_PER_HOUR   = 120;
+const IMGBOARD_FP_LOG_SITE_PER_HOUR = 5000;
+
+function imgboard_fp_log_table(): string {
+	imgboard_ddl_once("CREATE TABLE IF NOT EXISTS ``imgboard_fp_log`` (
+		`id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+		`time` int(11) NOT NULL,
+		`source` varchar(8) CHARACTER SET ascii NOT NULL,
+		`ip` varchar(45) CHARACTER SET ascii NOT NULL DEFAULT '',
+		`cookie_id` varchar(64) CHARACTER SET ascii NOT NULL DEFAULT '',
+		`hwid` varchar(64) CHARACTER SET ascii NOT NULL DEFAULT '',
+		`fp_hash` varchar(32) CHARACTER SET ascii NOT NULL DEFAULT '',
+		`stable_hash` varchar(32) CHARACTER SET ascii NOT NULL DEFAULT '',
+		`board` varchar(120) NOT NULL DEFAULT '',
+		`headers` mediumtext,
+		`payload` mediumtext,
+		PRIMARY KEY (`id`),
+		KEY `k_ip_time` (`ip`,`time`),
+		KEY `k_stable` (`stable_hash`),
+		KEY `k_fp` (`fp_hash`),
+		KEY `k_cookie` (`cookie_id`)
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+	return 'imgboard_fp_log';
+}
+
+// Every request header, which together identify a browser. Credentials are never stored.
+function imgboard_request_headers(): array {
+	$out = [];
+	foreach ($_SERVER as $key => $value) {
+		if (strncmp($key, 'HTTP_', 5) !== 0 || !is_string($value)) continue;
+		$name = str_replace('_', '-', strtolower(substr($key, 5)));
+		if (in_array($name, ['cookie', 'authorization', 'proxy-authorization'], true)) continue;
+		// staff mod.php addresses carry action tokens
+		if ($name === 'referer') $value = preg_replace('~(mod\.php)\?.*~', '$1', $value);
+		$out[$name] = mb_convert_encoding($value, 'UTF-8', 'UTF-8');
+	}
+	foreach (['SERVER_PROTOCOL', 'HTTPS'] as $key) {
+		if (!empty($_SERVER[$key])) $out[strtolower($key)] = (string)$_SERVER[$key];
+	}
+	ksort($out);
+	return $out;
+}
+
+// Append one record. Never throws: collecting must not break a page or a post.
+function imgboard_fp_log(string $source, array $row): void {
+	try {
+		imgboard_fp_log_table();
+		$ip = substr((string)($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45);
+		$now = time();
+		if ($source === 'fp') { // the public sink needs caps; posting has its own flood limits
+			$q = prepare("SELECT COUNT(*) FROM ``imgboard_fp_log`` WHERE `ip` = :ip AND `time` > :since AND `source` = 'fp'");
+			$q->bindValue(':ip', $ip);
+			$q->bindValue(':since', $now - 3600, PDO::PARAM_INT);
+			$q->execute();
+			if ((int)$q->fetchColumn() >= IMGBOARD_FP_LOG_IP_PER_HOUR) return;
+			$q = query("SELECT `time` FROM ``imgboard_fp_log`` WHERE `source` = 'fp' ORDER BY `id` DESC LIMIT 1 OFFSET " . (IMGBOARD_FP_LOG_SITE_PER_HOUR - 1));
+			if ($q && (int)$q->fetchColumn() > $now - 3600) return;
+		}
+		$q = prepare("INSERT INTO ``imgboard_fp_log``
+			(`time`, `source`, `ip`, `cookie_id`, `hwid`, `fp_hash`, `stable_hash`, `board`, `headers`, `payload`)
+			VALUES (:time, :source, :ip, :cookie_id, :hwid, :fp_hash, :stable_hash, :board, :headers, :payload)");
+		$q->bindValue(':time', $now, PDO::PARAM_INT);
+		$q->bindValue(':source', $source);
+		$q->bindValue(':ip', $ip);
+		foreach (['cookie_id', 'hwid', 'fp_hash', 'stable_hash', 'board'] as $field) {
+			$q->bindValue(':' . $field, (string)($row[$field] ?? ''));
+		}
+		$q->bindValue(':headers', json_encode(imgboard_request_headers(), JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE));
+		$q->bindValue(':payload', isset($row['payload']) ? mb_convert_encoding((string)$row['payload'], 'UTF-8', 'UTF-8') : null);
+		$q->execute();
+	} catch (\Throwable $e) {
+		error_log('fingerprint log failed: ' . $e->getMessage());
+	}
+}
+
+// History rows for a fingerprint hash or cookie id (including the cookies seen with that hash).
+function imgboard_fp_history(string $hash, int $limit): array {
+	imgboard_fp_log_table();
+	$cookies = [$hash => true];
+	$q = prepare("SELECT DISTINCT `cookie_id` FROM ``imgboard_fp`` WHERE (`stable_hash` = :h OR `fp_hash` = :h) AND `cookie_id` <> ''");
+	$q->bindValue(':h', $hash);
+	if ($q->execute()) {
+		foreach ($q->fetchAll(PDO::FETCH_COLUMN) as $c) $cookies[$c] = true;
+	}
+	$in = implode(',', array_map(fn($i) => ":c$i", range(0, count($cookies) - 1)));
+	$q = prepare("SELECT * FROM ``imgboard_fp_log`` WHERE `stable_hash` = :h OR `fp_hash` = :h OR `cookie_id` IN ($in) ORDER BY `id` DESC LIMIT :lim");
+	$q->bindValue(':h', $hash);
+	foreach (array_keys($cookies) as $i => $c) $q->bindValue(":c$i", (string)$c);
+	$q->bindValue(':lim', $limit, PDO::PARAM_INT);
+	$q->execute() or error(db_error($q));
+	return $q->fetchAll(PDO::FETCH_ASSOC);
 }
 
 /* ----------------------------------------------------------------------- *
@@ -2872,6 +3032,8 @@ function imgboard_fp_group_label(string $name): string {
 		'battery' => 'Battery', 'mediaDevices' => 'Media devices',
 		'keyboard' => 'Keyboard layout', 'network' => 'Network connection',
 		'storage' => 'Storage estimate', 'discord' => 'Discord (local RPC)',
+		'media' => 'Media codec support', 'navigatorAll' => 'Navigator (every value)', 'screenAll' => 'Screen (every value)',
+		'permissionStates' => 'Permission states', 'webglParams' => 'WebGL parameters',
 	];
 	return $map[$name] ?? $name;
 }
@@ -2965,6 +3127,26 @@ function mod_imgboard_fp_view(Context $ctx, $hash) {
 
 	$hash = preg_replace('/[^a-f0-9]/', '', (string)$hash);
 	if ($hash === '') error('Invalid fingerprint.');
+
+	// Admin-only: the stored history with every payload and header, as JSON. Also works for a
+	// cookie id, so a visitor without JavaScript (no fingerprint) can still be looked up.
+	if (($_GET['format'] ?? '') === 'json') {
+		if (!hasPermission($config['mod']['fp_raw']))
+			error($config['error']['noaccess']);
+		// shortcut: newest 500 records per download; everything stays in imgboard_fp_log.
+		$history = imgboard_fp_history($hash, 500);
+		foreach ($history as &$h) {
+			$h['headers'] = json_decode((string)$h['headers'], true);
+			$h['payload'] = json_decode((string)$h['payload'], true) ?? $h['payload'];
+		}
+		unset($h);
+		modLog('Downloaded raw fingerprint history');
+		header('Content-Type: application/json; charset=utf-8');
+		header('Content-Disposition: attachment; filename="fingerprint-' . $hash . '.json"');
+		header('X-Content-Type-Options: nosniff');
+		echo json_encode($history, JSON_PRETTY_PRINT | JSON_INVALID_UTF8_SUBSTITUTE);
+		return;
+	}
 
 	// Every sighting that matches this hash (as either the full or stable hash).
 	$q = prepare("SELECT * FROM ``imgboard_fp``
@@ -3238,6 +3420,12 @@ function imgboard_fp_report_text(string $hash, bool $can_raw, string $role_name)
 	if ($ips) { foreach (array_keys($ips) as $ipv) { $L[] = sprintf('  %-39s  %s', $ipv, imgboard_fp_network($ipv)); } }
 	else { $L[] = '  -'; }
 	if ($can_raw) {
+		if ($history = imgboard_fp_history($hash, 1)) {
+			$L[] = ''; $L[] = '--- Request headers (latest) ' . str_repeat('-', 35);
+			foreach ((array)json_decode((string)$history[0]['headers'], true) as $name => $value) {
+				$L[] = sprintf('  %-26s: %s', $name, str_replace(["\r", "\n"], ' ', (string)$value));
+			}
+		}
 		$L[] = ''; $L[] = '--- Raw signal breakdown ' . str_repeat('-', 39);
 		foreach ($groups as $grp) {
 			$L[] = '[ ' . $grp['name'] . ' ]  (' . $grp['code'] . ')';

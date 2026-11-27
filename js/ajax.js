@@ -116,7 +116,7 @@ $(window).ready(function() {
 				},
 				error: function(xhr, status, er) {
 					console.log(xhr);
-					alert(_('The server took too long to submit your post. Your post was probably still submitted. If it wasn\'t, we might be experiencing issues right now -- please try your post again later. Error information: ') + "<div><textarea>" + JSON.stringify(xhr) + "</textarea></div>");
+					alert(_('The server took too long to submit your post. Your post was probably still submitted. If it wasn\'t, we might be experiencing issues right now -- please try your post again later. Error information: ') + $('<div>').append($('<textarea>').text(JSON.stringify(xhr))).html());
 					$(form).find('input[type="submit"]').val(submit_txt);
 					$(form).find('input[type="submit"]').removeAttr('disabled');
 				},

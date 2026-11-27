@@ -91,6 +91,12 @@ then `tools/imgboard-rebuild.php`. Expect:
   device IDs change, and older posts can no longer be deleted with their password.
 - The config editor, themes and raw HTML are now Root only.
 
+## Upgrading to 1.2.1
+
+Run `docker compose up -d --build`, then `tools/imgboard-rebuild.php`. Posts already published
+are not re-checked by the stronger link detection. If you have edited the privacy page, add the
+new fingerprint details to it yourself (`?/edit-privacy`).
+
 ## New site checklist
 
 1. Replace `example.com` and, if you like, the `imgboard` prefix.
@@ -136,8 +142,11 @@ New sensitive features should pick an explicit level in `inc/instance-config.php
 
 ### Approval systems
 - **Media Pending Approval**: uploads are replaced by a text placeholder until approved.
-- **Link Pending Approval**: external links in posts show as `[Link Pending Approval]`
-  until approved (staff always see the real link).
+- **Link Pending Approval**: a post that links or names another site anywhere visitors can see it
+  (comment, subject, name, email, file name, embed), including obfuscated forms such as
+  `example(dot)com`, shows `[Link Pending Approval]` until approved (staff always see the real
+  text). Links are refused in poll choices. Domain endings come from `inc/tlds.txt` (the IANA
+  list); replace that file now and then to pick up new ones.
 - Both halves live in one `/pending` queue with CSRF-protected approve actions.
 - **Post Pending Approval (PPA)**: optionally hold non-staff posts for review, switchable per board from the Pending page.
   Posts via the Tor and I2P mirrors are held by default.
@@ -147,7 +156,7 @@ New sensitive features should pick an explicit level in `inc/instance-config.php
 ### Moderation and visibility
 - Tiered identifier visibility: Mediators see only a super-hashed IP token, Janitors an
   opaque poster number, Mods the IP and device identifiers, Admins the full fingerprint breakdown.
-- DTEG browser fingerprinting (`js/dteg/`: device and headless checks, WebRTC IP discovery, extension detection, input-cadence timing without keystroke content) with a trust score, a per-visitor list and bulk export
+- DTEG browser fingerprinting (`js/dteg/`: device and headless checks, WebRTC IP discovery, extension detection, input-cadence timing without keystroke content) with a trust score, an append-only history of every report and its request headers (also recorded for each post, with or without JavaScript), a per-visitor list and bulk export
   (Manager+ only), plus VPN/proxy detection (proxycheck.io) beside the IP.
 - File-hash bans, steganography check on images, per-board IP post deletion.
 - Admin-editable mod log, drag-to-reorder top bar editor, mod-mode overboard (`?/o`).
@@ -204,7 +213,7 @@ Built on the work of:
 - **Tinyboard** 0.9.6 — Copyright © 2010-2014 Tinyboard Development Group.
   <https://github.com/savetheinternet/Tinyboard>
 - **vichan** — Copyright © 2012-2025 vichan-devel. <https://github.com/vichan-devel/vichan>
-- **dchan** 1.2.0 — this fork. <https://github.com/mortally4634/dchan>
+- **dchan** 1.2.1 — this fork. <https://github.com/mortally4634/dchan>
 
 Licenses: [LICENSE.md](LICENSE.md) covers dchan; [LICENSE.Tinyboard.md](LICENSE.Tinyboard.md) covers the
 Tinyboard and vichan code this fork is built on.

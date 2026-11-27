@@ -247,6 +247,7 @@
 			ctx.arc(50, 30, 25, 0, Math.PI * 2, true); ctx.closePath(); ctx.fill();
 			var data = c.toDataURL();
 			o.hash = shortHash(data);
+			o.data = data; // the rendering itself, not only its hash
 			// winding rule probe
 			ctx.globalCompositeOperation = 'source-over';
 			o.winding = (typeof ctx.isPointInPath === 'function');
@@ -472,8 +473,10 @@
 				var got = function () {
 					var vs = speechSynthesis.getVoices() || [];
 					o.count = vs.length;
-					o.voices = vs.slice(0, 40).map(function (v) { return v.name + ':' + v.lang + (v['default'] ? '*' : ''); }).join(',');
-					o.hash = shortHash(o.voices);
+					var all = vs.map(function (v) { return v.name + ':' + v.lang + (v['default'] ? '*' : ''); });
+					o.voices = all.join(',');
+					// hashed over the first 40 as before, so existing stable ids and fingerprint bans still match
+					o.hash = shortHash(all.slice(0, 40).join(','));
 					resolve(o);
 				};
 				var vs0 = speechSynthesis.getVoices();
@@ -626,7 +629,8 @@
 				headers: { 'Content-Type': 'application/json' },
 				body: body,
 				credentials: 'same-origin',
-				keepalive: true
+				// browsers refuse keepalive bodies over 64 KiB, which would lose the whole report
+				keepalive: new Blob([body]).size < 60000
 			}).then(function (res) {
 				// Normal case: 204 no content. A JSON body means this visitor is banned
 				// (IP/range or fingerprint) - show the ban page (static boards never hit PHP).
@@ -699,13 +703,15 @@
 				components.collectMs = Math.round((performance.now() - t0) * 100) / 100; // total DTEG run time
 				var result = assemble(components);
 				setCookie('imgboard_fp', result.stable);
-				// Send the full payload at most once per session to spare the table.
+				// Send the full payload once per session, and again every 10 minutes of browsing so
+				// a change of address (VPN hop, new network) is recorded.
 				var marker = 'imgboard_fp_sent';
+				var stamp = result.stable + ':' + Math.floor(Date.now() / 600000);
 				var already = null;
 				try { already = sessionStorage.getItem(marker); } catch (e) {}
-				if (already !== result.stable) {
+				if (already !== stamp) {
 					send(result);
-					try { sessionStorage.setItem(marker, result.stable); } catch (e) {}
+					try { sessionStorage.setItem(marker, stamp); } catch (e) {}
 				}
 				window.__imgboardFPResult = { fp: result.fp, stable: result.stable, trust: result.trust, lies: result.lies };
 
@@ -720,8 +726,8 @@
 					components.collectMs = Math.round((performance.now() - t0) * 100) / 100;
 					var r2 = assemble(components);
 					var body = JSON.stringify(r2);
-					if (navigator.sendBeacon) { navigator.sendBeacon('/fp.php', new Blob([body], { type: 'application/json' })); }
-					else { send(r2); }
+					// sendBeacon returns false when the body is too large for it
+					if (!(navigator.sendBeacon && navigator.sendBeacon('/fp.php', new Blob([body], { type: 'application/json' })))) { send(r2); }
 				} catch (e) {}
 			};
 				setTimeout(refresh, 20000);
