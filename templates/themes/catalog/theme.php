@@ -115,6 +115,18 @@
 					$post['file'] = $config['root'] . $config['image_deleted'];
 				}
 
+				// Media / Link Pending approval: the public catalog shows placeholders too.
+				if (!$mod && !$post['approved']) {
+					$post['file'] = $config['root'] . $config['pending']['placeholder_thumb'];
+					unset($post['youtube']);
+				}
+				if (!$mod && !$post['approved_link']) {
+					$covered = (object)['body' => $post['body'], 'approved_link' => 0];
+					cover_pending_links($covered);
+					$post['body'] = $covered->body;
+					$post['body_nomarkup'] = strip_tags($covered->body);
+				}
+
 				if (empty($post['image_count'])) $post['image_count'] = 0;
 				$post['pubdate'] = date('r', $post['time']);
 				$recent_posts[] = $post;

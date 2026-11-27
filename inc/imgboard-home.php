@@ -138,7 +138,7 @@ function imgboard_render_home($mod = false): string {
 		// --- Latest posts across all boards (text only) ---
 		$parts = [];
 		foreach ($boards as $b) {
-			$parts[] = sprintf("SELECT *, '%s' AS `board` FROM ``posts_%s``", $b['uri'], $b['uri']);
+			$parts[] = sprintf("SELECT *, '%s' AS `board` FROM ``posts_%s`` WHERE `approved_link` = 1", $b['uri'], $b['uri']);
 		}
 		$sql = implode(' UNION ALL ', $parts) . ' ORDER BY `time` DESC LIMIT 15';
 		if ($q = query($sql)) {

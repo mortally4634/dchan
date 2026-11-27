@@ -658,6 +658,19 @@ if (file_exists($config['has_installed'])) {
 	die(Element('page.html', $page));
 }
 
+// "Next Steps" box: creates the first account (random password, shown once) if needed.
+function admin_notice(): string {
+	$password = secure_admin_account();
+	$login = $password === null
+		? '<p>Log in at <strong>/mod.php</strong> with your existing account.</p>'
+		: '<p>You can now log in to the admin panel at <strong>/mod.php</strong> with:</p>' .
+			'<p><strong>Username:</strong> admin</p>' .
+			'<p><strong>Password:</strong> <code>' . $password . '</code></p>' .
+			'<p><strong>This password is shown only once.</strong> Save it now, then change it after logging in.</p>';
+	return '<div class="ban"><h2>Next Steps</h2>' . $login .
+		'<p style="text-align:center"><a href="/mod.php"><button>Go to Admin Panel</button></a></p></div>';
+}
+
 function create_config_from_array(&$instance_config, &$array, $prefix = '') {
 	foreach ($array as $name => $value) {
 		if (is_array($value)) {
@@ -1050,12 +1063,7 @@ if ($step == 0) {
 					'<p style="text-align:center">If you are new to vichan, <a href="https://github.com/vichan-devel/vichan/wiki" target="_blank" rel="noopener noreferrer">please check out the documentation.</a></p>';
 
 	// Admin panel notice
-	$page['body'] .= '<div class="ban"><h2>Next Steps</h2>' .
-					 '<p>You can now log in to the admin panel at <strong>/mod.php</strong> using the default credentials:</p>' .
-					 '<p><strong>Username:</strong> admin</p>' .
-					 '<p><strong>Password:</strong> password</p>' .
-					 '<p><strong>Important:</strong> For security, please change the administrator password immediately after logging in.</p>' .
-					 '<p style="text-align:center"><a href="/mod.php"><button>Go to Admin Panel</button></a></p></div>';
+	$page['body'] .= admin_notice();
 
 
 	if (!empty($sql_errors)) {
@@ -1082,12 +1090,7 @@ if ($step == 0) {
 					'<p style="text-align:center">If you are new to vichan, <a href="https://github.com/vichan-devel/vichan/wiki">please check out the documentation</a>.</p>';
 
 	// Admin panel notice
-	$page['body'] .= '<div class="ban"><h2>Next Steps</h2>' .
-					'<p>You can now log in to the admin panel at <strong>/mod.php</strong> using the default credentials:</p>' .
-					'<p><strong>Username:</strong> admin</p>' .
-					'<p><strong>Password:</strong> password</p>' .
-					'<p><strong>Important:</strong> For security, please change the administrator password immediately after logging in.</p>' .
-					'<p style="text-align:center"><a href="/mod.php"><button>Go to Admin Panel</button></a></p></div>';
+	$page['body'] .= admin_notice();
 
 	$boards = listBoards();
 	foreach ($boards as &$_board) {

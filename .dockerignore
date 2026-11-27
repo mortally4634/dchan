@@ -1,4 +1,5 @@
 **/.git
 **/.gitignore
 /local-instances
+inc/instance-salts.php
 **/.gitkeep

@@ -37,7 +37,7 @@
 
 			$query = '';
 			foreach($boards as &$_board) {
-				if(in_array($_board['uri'], explode(' ', $this->settings['exclude'])))
+				if(in_array($_board['uri'], array_merge(explode(' ', $this->settings['exclude']), $config['imgboard_staff_boards'] ?? [])))
 					continue;
 				$query .= sprintf("SELECT *, '%s' AS `board` FROM ``posts_%s`` WHERE `thread` IS NULL UNION ALL ", $_board['uri'], $_board['uri']);
 			}

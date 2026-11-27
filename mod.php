@@ -137,13 +137,9 @@ $pages = [
 
 
 if (!$mod) {
-	$pages = [ '!^(.+)?$!' => 'login' ];
-} elseif (isset($_GET['status'], $_GET['r'])) {
-	header('Location: ' . $_GET['r'], true, (int)$_GET['status']);
-	exit;
-}
-
-if (isset($config['mod']['custom_pages'])) {
+	// /s: a newline in the query must not slip past the login catch-all.
+	$pages = [ '!^(.+)?$!s' => 'login' ];
+} elseif (isset($config['mod']['custom_pages'])) {
 	$pages = array_merge($pages, $config['mod']['custom_pages']);
 }
 

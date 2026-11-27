@@ -89,7 +89,7 @@ $config['mod']['upgrade_db'] = 30;  // Admins only
 //   configs (this file is require_once'd only on the first, global config load).
 $config['mod']['custom_pages']['/(\%b)/votedelete/(\d+)']   = 'secure_POST votedelete';
 $config['mod']['custom_pages']['/(\%b)/voteban/(\d+)']      = 'secure_POST voteban';
-$config['mod']['custom_pages']['/(\%b)/noteip/(\d+)']       = 'secure noteip';
+$config['mod']['custom_pages']['/(\%b)/noteip/(\d+)']       = 'secure_POST noteip';
 $config['mod']['custom_pages']['/mod-requests']             = 'modreq_queue';
 $config['mod']['custom_pages']['/mod-requests/approve/(\d+)'] = 'secure modreq_approve';
 $config['mod']['custom_pages']['/mod-requests/deny/(\d+)']    = 'secure modreq_deny';
@@ -1016,12 +1016,10 @@ function imgboard_vote(Context $ctx, string $board, $post, string $action) {
 function mod_votedelete(Context $ctx, $board, $post) { imgboard_vote($ctx, $board, $post, 'delete'); }
 function mod_voteban(Context $ctx, $board, $post)    { imgboard_vote($ctx, $board, $post, 'ban'); }
 
-// Quick "note on this poster" jump from a post's controls: resolve the post's IP
-// server-side and bounce to its IP page (so the raw IP never appears in a page
-// rendered for a role without show_ip). The note itself is added there, gated
-// by create_notes.
+// Quick "note on this poster" from a post's controls. The IP is resolved and used
+// only server-side: roles without show_ip must never receive it, not even in a URL.
 function mod_noteip(Context $ctx, $board, $post) {
-	global $config;
+	global $config, $mod;
 	if (!hasPermission($config['mod']['create_notes'], $board)) {
 		error($config['error']['noaccess']);
 	}
@@ -1029,7 +1027,24 @@ function mod_noteip(Context $ctx, $board, $post) {
 	if ($row === null || !isset($row['ip'])) {
 		error($config['error']['invalidpost']);
 	}
-	header('Location: ?/IP/' . cloak_ip($row['ip']) . '#notes', true, $config['redirect_http']);
+	if (isset($_POST['note'])) {
+		$note = escape_markup_modifiers($_POST['note']);
+		markup($note);
+		$q = prepare('INSERT INTO ``ip_notes`` VALUES (NULL, :ip, :mod, :time, :body)');
+		$q->bindValue(':ip', $row['ip']);
+		$q->bindValue(':mod', $mod['id']);
+		$q->bindValue(':time', time(), PDO::PARAM_INT);
+		$q->bindValue(':body', $note);
+		$q->execute() or error(db_error($q));
+		modLog('Added a note on the poster of post #' . (int)$post, $board);
+		header('Location: ?/' . sprintf($config['board_path'], $board) . $config['file_index'], true, $config['redirect_http']);
+		return;
+	}
+	echo mod_page('Note on poster', 'mod/note_form.html', [
+		'board'   => $board,
+		'post_id' => (int)$post,
+		'token'   => make_secure_link_token($board . '/noteip/' . (int)$post),
+	], $mod);
 }
 
 function mod_modreq_queue(Context $ctx) {
@@ -1107,9 +1122,11 @@ function mod_modreq_approve(Context $ctx, $id) {
 	} else { // ban
 		if ($post !== null && isset($post['ip'])) {
 			$length = ($req['duration'] !== null && $req['duration'] !== '') ? $req['duration'] : false;
-			Bans::new_ban($post['ip'], $req['reason'], $length, false /* site-wide */, false,
+			// Site-wide only if the approver is assigned every board.
+			$scope = hasPermission($config['mod']['ban'], '*') ? false : $req['board'];
+			Bans::new_ban($post['ip'], $req['reason'], $length, $scope, false,
 				$config['ban_show_post'] ? $post : false);
-			modLog("Approved site-wide ban of post #{$req['post_id']} (proposed by {$req['requested_by']})", $req['board']);
+			modLog("Approved " . ($scope ? 'board' : 'site-wide') . " ban of post #{$req['post_id']} (proposed by {$req['requested_by']})", $req['board']);
 		}
 	}
 
@@ -2067,7 +2084,7 @@ function mod_modlog_edit(Context $ctx) {
 			modLog('Deleted a moderation log entry');
 		} elseif (isset($_POST['edit_id'])) {
 			$q = prepare("UPDATE ``modlogs`` SET `text` = :t WHERE `id` = :id");
-			$q->bindValue(':t', (string) ($_POST['text'] ?? ''));
+			$q->bindValue(':t', imgboard_sanitize_html((string) ($_POST['text'] ?? '')));
 			$q->bindValue(':id', (int) $_POST['edit_id'], PDO::PARAM_INT);
 			$q->execute() or error(db_error($q));
 			modLog('Edited a moderation log entry');
@@ -2084,7 +2101,7 @@ function mod_modlog_edit(Context $ctx) {
 				$q->bindValue(':ip', $_SERVER['REMOTE_ADDR']);
 				$q->bindValue(':board', $boardv !== '' ? $boardv : null);
 				$q->bindValue(':time', $when, PDO::PARAM_INT);
-				$q->bindValue(':text', $text);
+				$q->bindValue(':text', imgboard_sanitize_html($text));
 				$q->execute() or error(db_error($q));
 				modLog('Added a moderation log entry');
 			}
@@ -2721,12 +2738,13 @@ function mod_fp_bans(Context $ctx) {
 		$b['del_token'] = make_secure_link_token('fp-bans/delete/' . $b['id']);
 	}
 	unset($b);
-	echo mod_page(_('Fingerprint bans'), 'mod/fp_bans.html', [ 'bans' => $bans ]);
+	mod_page(_('Fingerprint bans'), 'mod/fp_bans.html', [ 'bans' => $bans ], $mod);
 }
 
+// Fingerprint bans are site-wide, so lifting one needs an all-boards account.
 function mod_fp_ban_delete(Context $ctx, $id) {
 	global $config;
-	if (!hasPermission($config['mod']['ban'])) error($config['error']['noaccess']);
+	if (!hasPermission($config['mod']['ban'], '*')) error($config['error']['noaccess']);
 	imgboard_fp_ban_delete((int)$id);
 	modLog('Deleted fingerprint ban #' . (int)$id);
 	header('Location: ?/fp-bans', true, $config['redirect_http']);

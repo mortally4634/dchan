@@ -39,7 +39,7 @@
 					<div style="padding:4px 2px;">
 						{% if p.subject %}<strong>{{ p.subject|e }}</strong> {% endif %}
 						{% if p.name %}<span class="unimportant">by {{ p.name|e }}</span> {% endif %}
-						<span class="unimportant">&middot; {{ p.num_files }} file(s) &middot; {{ p.ip|e }} &middot; {{ p.time|date('Y-m-d H:i') }}</span>
+						<span class="unimportant">&middot; {{ p.num_files }} file(s) &middot; {% if mod|hasPermission(config.mod.show_ip, p.board) %}{{ p.ip|e }}{% else %}IP:{{ p.ip|fp_superip }}{% endif %} &middot; {{ p.time|date('Y-m-d H:i') }}</span>
 						<div style="margin-top:4px;white-space:pre-wrap;word-break:break-word;">{{ p.body_preview|e }}</div>
 					</div>
 				</fieldset>
@@ -81,7 +81,7 @@
 							<strong>Link(s) in this post (staff only):</strong>
 							<ul style="margin:4px 0 0;">
 								{% for l in post.preview_links %}
-									<li><a href="{{ l }}" target="_blank" rel="noreferrer nofollow">{{ l }}</a></li>
+									<li><a href="{{ l|e }}" target="_blank" rel="noreferrer nofollow">{{ l|e }}</a></li>
 								{% endfor %}
 							</ul>
 						</div>

@@ -1,0 +1,8 @@
+<div class="note-form" style="text-align:center">
+	<form action="?/{{ board }}/noteip/{{ post_id }}" method="post">
+		<input type="hidden" name="token" value="{{ token }}">
+		<p><label for="note_body">Note on the poster of <code>/{{ board }}/ #{{ post_id }}</code></label></p>
+		<p><textarea id="note_body" name="note" rows="5" cols="48" required></textarea></p>
+		<p><input type="submit" value="New note"></p>
+	</form>
+</div>

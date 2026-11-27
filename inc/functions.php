@@ -120,7 +120,7 @@ function loadConfig() {
 		else {
 			$config['locale'] = 'en';
 
-			$configstr = file_get_contents('inc/secrets.php');
+			$configstr = (string)@file_get_contents('inc/secrets.php'); // optional file
 
 			if (isset($board['dir']) && file_exists($board['dir'] . '/config.php')) {
 				$configstr .= file_get_contents($board['dir'] . '/config.php');
@@ -2733,7 +2733,8 @@ function purify_html($s) {
 				$allowed .= '<' . $tag . '>';
 			}
 		}
-		return strip_tags($s, $allowed);
+		// strip_tags keeps attributes, so onclick= / javascript: must be removed separately.
+		return imgboard_sanitize_html(strip_tags($s, $allowed));
 	}
 
 	$c = HTMLPurifier_Config::createDefault();
@@ -2748,6 +2749,7 @@ function purify_html($s) {
 function markdown($s) {
 	$pd = new Parsedown();
 	$pd->setMarkupEscaped(true);
+	$pd->setSafeMode(true); // also refuses javascript: links
 
 	return $pd->text($s);
 }

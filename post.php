@@ -155,9 +155,11 @@ function ocr_image(array $config, string $img_path): string {
  * @throws RuntimeException Throws on IO errors.
  */
 function strip_image_metadata(string $img_path): int {
-	$err = shell_exec_error('exiftool -overwrite_original -ignoreMinorErrors -q -q -all= -Orientation ' . escapeshellarg($img_path));
-	if ($err === false) {
-		throw new RuntimeException('Could not strip EXIF metadata!');
+	// Keeps only the orientation tag. Judged by exit status: any failure must reject the upload.
+	$out = [];
+	exec('exiftool -overwrite_original -ignoreMinorErrors -q -q -all= -CommonIFD0= -tagsfromfile @ -Orientation ' . escapeshellarg($img_path) . ' 2>&1', $out, $status);
+	if ($status !== 0) {
+		throw new RuntimeException('Could not strip EXIF metadata! ' . implode(' ', $out));
 	}
 	clearstatcache(true, $img_path);
 	$ret = filesize($img_path);
@@ -401,8 +403,9 @@ if (isset($_POST['delete'])) {
 	if (!openBoard($_POST['board']))
 		error($config['error']['noboard']);
 
-	if ((!isset($_POST['mod']) || !$_POST['mod']) && $config['board_locked']) {
-		error("Board is locked");
+	if ($config['board_locked']) {
+		check_login($context, false);
+		if (empty($mod)) error("Board is locked");
 	}
 
 	// Check if banned
@@ -496,8 +499,9 @@ if (isset($_POST['delete'])) {
 	if (!openBoard($_POST['board']))
 		error($config['error']['noboard']);
 
-	if ((!isset($_POST['mod']) || !$_POST['mod']) && $config['board_locked']) {
-		error("Board is locked");
+	if ($config['board_locked']) {
+		check_login($context, false);
+		if (empty($mod)) error("Board is locked");
 	}
 
 	// Check if banned
@@ -673,7 +677,7 @@ if (isset($_POST['delete'])) {
 			}
 			// Remote 3rd party captchas.
 			elseif ($provider && (!$dynamic || $dynamic === $_SERVER['REMOTE_ADDR'])) {
-				$query = $content->get(RemoteCaptchaQuery::class);
+				$query = $context->get(RemoteCaptchaQuery::class);
 				$field = $query->responseField();
 
 				if (!isset($_POST[$field])) {
@@ -702,7 +706,7 @@ if (isset($_POST['delete'])) {
 
 		// Imgboard: no-JS image captcha (see captcha.php). Required to start a
 		// NEW THREAD only (not for replies); mods (mod=1) are exempt, like
-		// Turnstile. The answer is matched case-insensitively and consumed one-shot.
+		// Turnstile. The answer is matched case-insensitively; each image allows one guess.
 		if ((!empty($config['imgboard_captcha']) || imgboard_is_hs()) && $post['op'] && empty($_POST['mod'])) {
 			$cid = isset($_COOKIE['imgboard_captcha_id']) ? (string)$_COOKIE['imgboard_captcha_id'] : '';
 			$ans = isset($_POST['captcha_text']) ? trim((string)$_POST['captcha_text']) : '';
@@ -717,15 +721,13 @@ if (isset($_POST['delete'])) {
 					$cq->bindValue(':min', time() - 600, PDO::PARAM_INT);
 					$cq->execute();
 					$crow = $cq->fetch(PDO::FETCH_ASSOC);
-					if ($crow && strcasecmp((string)$crow['text'], $ans) === 0) {
-						$ok = true;
-						// Consume the code one-shot ONLY on a correct answer, so a
-						// mistyped captcha can be retried against the same image
-						// instead of being permanently invalidated. Wrong/empty
-						// answers leave the code in place (it still expires by TTL).
+					if ($crow) {
+						// One guess per image, right or wrong. The DELETE is the claim: of
+						// simultaneous requests, only the one that removes the row may pass.
 						$cd = prepare("DELETE FROM ``captchas`` WHERE `cookie` = :c AND `extra` = 'imgboard'");
 						$cd->bindValue(':c', $cid);
 						$cd->execute();
+						$ok = $cd->rowCount() === 1 && strcasecmp((string)$crow['text'], $ans) === 0;
 					}
 				} catch (\Throwable $e) {
 					$ok = false;
@@ -995,7 +997,8 @@ if (isset($_POST['delete'])) {
 				if (isset($config['filename_func']))
 					$file['file_id'] = $config['filename_func']($file);
 				else
-					$file['file_id'] = time() . substr(microtime(), 2, 3);
+					// Random digits: a pending file's URL must not be guessable from its post time.
+					$file['file_id'] = time() . substr(microtime(), 2, 3) . random_int(100000000, 999999999);
 
 				if (sizeof($_FILES) > 1)
 					$file['file_id'] .= "-$i";
@@ -1056,7 +1059,9 @@ if (isset($_POST['delete'])) {
 		// in the CF-IPCountry header - use that instead of a GeoIP database.
 		$country_code = strtolower($_SERVER['HTTP_CF_IPCOUNTRY'] ?? '');
 		// Skip Cloudflare's non-country / unknown codes.
-		if ($country_code !== '' && !in_array($country_code, array('eu', 'ap', 'o1', 'a1', 'a2', 'xx', 't1'))) {
+		// The header is only trustworthy behind Cloudflare, and it lands inside post markup:
+		// accept nothing but a two-letter code.
+		if (preg_match('/^[a-z]{2}$/D', $country_code) && !in_array($country_code, array('eu', 'ap', 'o1', 'a1', 'a2', 'xx'))) {
 			$post['body'] .= "\n<tinyboard flag>" . $country_code . "</tinyboard>" .
 				"\n<tinyboard flag alt>" . strtoupper($country_code) . "</tinyboard>";
 		}
@@ -1164,7 +1169,7 @@ if (isset($_POST['delete'])) {
 		if ($file['is_an_image']) {
 			if ($config['ie_mime_type_detection'] !== false) {
 				// Check IE MIME type detection XSS exploit
-				$buffer = file_get_contents($upload, false, null, 0, 255);
+				$buffer = file_get_contents($file['tmp_name'], false, null, 0, 255);
 				if (preg_match($config['ie_mime_type_detection'], $buffer)) {
 					undoImage($post);
 					error($config['error']['mime_exploit']);
@@ -1185,6 +1190,8 @@ if (isset($_POST['delete'])) {
 			}
 
 			$file['exif_stripped'] = false;
+			// Formats that carry camera / GPS metadata.
+			$file_image_has_operable_metadata = in_array($size[2], array(IMAGETYPE_JPEG, IMAGETYPE_PNG, IMAGETYPE_WEBP));
 
 			if ($file_image_has_operable_metadata && $config['convert_auto_orient']) {
 				// The following code corrects the image orientation.
@@ -1195,13 +1202,11 @@ if (isset($_POST['delete'])) {
 						$gm = in_array($config['thumb_method'], array('gm', 'gm+gifsicle'));
 						if (isset($exif['Orientation']) && $exif['Orientation'] != 1) {
 							$error = shell_exec_error(($gm ? 'gm ' : '') . 'convert ' .
-									escapeshellarg($file['tmp_name']) . ' -auto-orient ' . escapeshellarg($upload));
+									escapeshellarg($file['tmp_name']) . ' -auto-orient ' . escapeshellarg($file['tmp_name']));
 
 							if ($error)
 								error(_('Could not auto-orient image!'), null, $error);
 							$size = @getimagesize($file['tmp_name']);
-							if ($config['strip_exif'])
-								$file['exif_stripped'] = true;
 						}
 					}
 				}
@@ -1257,7 +1262,7 @@ if (isset($_POST['delete'])) {
 					} catch (RuntimeException $e) {
 						$context->get(LogDriver::class)->log(LogDriver::ERROR, "Could not strip image metadata: {$e->getMessage()}");
 						// Since EXIF metadata can countain sensible info, fail the request.
-						error(_('Could not strip EXIF metadata!'), null, $error);
+						error(_('Could not strip EXIF metadata!'));
 					}
 				} else {
 					$image->to($file['file']);
@@ -1268,6 +1273,17 @@ if (isset($_POST['delete'])) {
 		} else {
 			// not an image
 			$file['thumb'] = 'file';
+
+			// Phone photos and videos carry GPS data too. (exiftool cannot rewrite WebM or ICO.)
+			if ($config['strip_exif'] && $config['use_exiftool']
+					&& in_array($file['extension'], array('heic', 'heif', 'avif', 'tif', 'tiff', 'jxl', 'mp4'))) {
+				try {
+					$file['size'] = strip_image_metadata($file['tmp_name']);
+				} catch (RuntimeException $e) {
+					$context->get(LogDriver::class)->log(LogDriver::ERROR, "Could not strip file metadata: {$e->getMessage()}");
+					error(_('Could not strip EXIF metadata!'));
+				}
+			}
 
 			$size = @getimagesize(sprintf($config['file_thumb'],
 				isset($config['file_icons'][$file['extension']]) ?

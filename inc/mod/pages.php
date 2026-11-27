@@ -44,6 +44,12 @@ function mod_page($title, $template, $args, $mod, $subtitle = false) {
 	echo Element($config['file_page_template'], $options);
 }
 
+// Proof that a browser has logged in as this account before.
+function imgboard_known_device(string $username): string {
+	global $config;
+	return hash_hmac('sha256', 'known-device|' . strtolower($username), $config['cookies']['salt']);
+}
+
 function mod_login(Context $ctx, $redirect = false) {
 	global $mod;
 	$config = $ctx->get('config');
@@ -58,6 +64,11 @@ function mod_login(Context $ctx, $redirect = false) {
 		// failed logins in a window (keyed on the real client IP).
 		$login_ip = function_exists('imgboard_login_ip_key') ? imgboard_login_ip_key($_SERVER['REMOTE_ADDR'] ?? '') : ($_SERVER['REMOTE_ADDR'] ?? '');
 		$login_user = function_exists('imgboard_login_user_key') && isset($_POST['username']) && is_string($_POST['username']) ? imgboard_login_user_key($_POST['username']) : '';
+		// A known browser skips the per-username lock (the per-address one still applies).
+		if ($login_user !== '' && is_string($_COOKIE['imgboard_known'] ?? null)
+				&& hash_equals(imgboard_known_device($_POST['username']), $_COOKIE['imgboard_known'])) {
+			$login_user = '';
+		}
 		$locked = function_exists('imgboard_login_locked_for') ? max(imgboard_login_locked_for($login_ip), $login_user !== '' ? imgboard_login_locked_for($login_user) : 0) : 0;
 		// Check if inputs are set and not empty
 		if ($locked > 0) {
@@ -86,6 +97,13 @@ function mod_login(Context $ctx, $redirect = false) {
 			// Login successful
 			// Set cookies
 			setCookies();
+			setcookie('imgboard_known', imgboard_known_device($_POST['username']), [
+				'expires'  => time() + 60 * 60 * 24 * 365,
+				'path'     => '/',
+				'secure'   => Net\is_connection_secure($config['cookies']['secure_login_only'] === 1),
+				'httponly' => true,
+				'samesite' => 'Strict',
+			]);
 
 			if ($redirect)
 				header('Location: ?' . $redirect, true, $config['redirect_http']);
@@ -115,7 +133,10 @@ function mod_confirm(Context $ctx, $request) {
 }
 
 function mod_logout(Context $ctx) {
+	global $mod;
 	$config = $ctx->get('config');
+	// Server-side: copies of this account's cookies stop working too.
+	imgboard_setting_set('logout_' . $mod['id'], (string)time());
 	destroyCookies();
 
 	header('Location: ?/dashboard', true, $config['redirect_http']);
@@ -295,6 +316,9 @@ function mod_search(Context $ctx, $type, $search_query_escaped, $page_no = 1) {
 	// Which `field` to search?
 	if ($type == 'posts')
 		$sql_field = array('body_nomarkup', 'files', 'subject', 'filehash', 'ip', 'name', 'trip', 'hwid', 'cookie_id', 'fp_hash');
+	// Matching on a hidden column would reveal it one character at a time.
+	if ($type == 'posts' && !hasPermission($config['mod']['show_ip']))
+		$sql_field = array_diff($sql_field, ['ip']);
 	if ($type == 'IP_notes')
 		$sql_field = 'body';
 	if ($type == 'bans')
@@ -813,6 +837,13 @@ function mod_user_log(Context $ctx, $username, $page_no = 1) {
 	mod_page(_('Moderation log'), $config['file_mod_log'], [ 'logs' => $logs, 'count' => $count, 'username' => $username ], $mod);
 }
 
+// Replace every IPv4 / IPv6 address (and range) in a log line with xxxx.
+function imgboard_redact_ips(string $text): string {
+	return preg_replace_callback('/(?:\d{1,3}(?:\.\d{1,3}){3}|[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}(?:(?:\.\d{1,3}){3})?)/', function ($m) {
+		return filter_var($m[0], FILTER_VALIDATE_IP) !== false ? 'xxxx' : $m[0];
+	}, $text);
+}
+
 function mod_board_log(Context $ctx, $board, $page_no = 1, $hide_names = false, $public = false) {
 	global $mod;
 	$config = $ctx->get('config');
@@ -834,12 +865,10 @@ function mod_board_log(Context $ctx, $board, $page_no = 1, $hide_names = false, 
 		error($config['error']['404']);
 
 	if (!hasPermission($config['mod']['show_ip'])) {
-		// Supports ipv4 only!
-		foreach ($logs as $i => &$log) {
-			$log['text'] = preg_replace_callback('/(?:<a href="\?\/IP\/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}">)?(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?:<\/a>)?/', function($matches) {
-				return "xxxx";//less_ip($matches[1]);
-			}, $log['text']);
+		foreach ($logs as &$log) {
+			$log['text'] = imgboard_redact_ips((string)$log['text']);
 		}
+		unset($log);
 	}
 
 	$query = prepare("SELECT COUNT(*) FROM ``modlogs`` LEFT JOIN ``mods`` ON `mod` = ``mods``.`id` WHERE `board` = :board");
@@ -990,7 +1019,7 @@ function mod_ip(Context $ctx, $cip) {
 	$args['posts'] = [];
 
 	if ($config['mod']['dns_lookup'] && empty($config['ipcrypt_key']))
-		$args['hostname'] = rDNS($ip);
+		$args['hostname'] = htmlspecialchars((string)rDNS($ip));
 
 	$boards = listBoards();
 	foreach ($boards as $board) {
@@ -1043,11 +1072,19 @@ function mod_ip(Context $ctx, $cip) {
 	mod_page(sprintf('%s: %s', _('IP'), htmlspecialchars($cip)), $config['file_mod_view_ip'], $args, $mod, $args['hostname']);
 }
 
+// A ban may only cover boards this account is assigned; an all-boards ban needs an all-boards account.
+function imgboard_require_ban_scope($ban_board): void {
+	global $config;
+	if (!hasPermission($config['mod']['ban'], $ban_board ?: '*'))
+		error($config['error']['noaccess']);
+}
+
 function mod_edit_ban(Context $ctx, $ban_id) {
 	global $mod;
 	$config = $ctx->get('config');
 
-	if (!hasPermission($config['mod']['edit_ban']))
+	// The editor shows the banned address.
+	if (!hasPermission($config['mod']['edit_ban']) || !hasPermission($config['mod']['show_ip']))
 		error($config['error']['noaccess']);
 
 	$args['bans'] = Bans::find(null, false, true, $ban_id, $config['auto_maintenance']);
@@ -1057,6 +1094,8 @@ function mod_edit_ban(Context $ctx, $ban_id) {
 
 	if (!$args['bans'])
 		error($config['error']['404']);
+
+	imgboard_require_ban_scope($args['current_board']);
 
 	if (isset($_POST['new_ban'])) {
 
@@ -1081,6 +1120,7 @@ function mod_edit_ban(Context $ctx, $ban_id) {
 				$new_ban['board'] = $_POST['board'];
 		}
 
+		imgboard_require_ban_scope($new_ban['board']);
 		Bans::new_ban($new_ban['mask'], $new_ban['reason'], $new_ban['length'], $new_ban['board'], false, $new_ban['post']);
 		Bans::delete($ban_id);
 
@@ -1096,7 +1136,8 @@ function mod_ban(Context $ctx) {
 	global $mod;
 	$config = $ctx->get('config');
 
-	if (!hasPermission($config['mod']['ban']))
+	// Banning a typed-in address or range needs show_ip; other ranks ban from a post.
+	if (!hasPermission($config['mod']['ban']) || !hasPermission($config['mod']['show_ip']))
 		error($config['error']['noaccess']);
 
 	if (!isset($_POST['ip'], $_POST['reason'], $_POST['length'], $_POST['board'])) {
@@ -1104,6 +1145,7 @@ function mod_ban(Context $ctx) {
 		return;
 	}
 
+	imgboard_require_ban_scope($_POST['board'] == '*' ? false : $_POST['board']);
 	Bans::new_ban($_POST['ip'], $_POST['reason'], $_POST['length'], $_POST['board'] == '*' ? false : $_POST['board']);
 
 	if (isset($_POST['redirect']))
@@ -1162,7 +1204,7 @@ function mod_bans_json(Context $ctx) {
 	// Compress the json for faster loads
 	if (substr_count($_SERVER['HTTP_ACCEPT_ENCODING'], 'gzip')) ob_start("ob_gzhandler");
 
-	Bans::stream_json(false, false, !hasPermission($config['mod']['view_banstaff']), $mod['boards']);
+	Bans::stream_json(false, !hasPermission($config['mod']['show_ip']), !hasPermission($config['mod']['view_banstaff']), $mod['boards']);
 }
 
 function mod_ban_appeals(Context $ctx) {
@@ -1187,7 +1229,7 @@ function mod_ban_appeals(Context $ctx) {
 
 		if (isset($_POST['unban'])) {
 			modLog('Accepted ban appeal #' . $ban['id'] . ' for ' . $ban['mask']);
-			Bans::delete($ban['ban_id'], true);
+			Bans::delete($ban['ban_id'], true, $mod['boards']);
 			query("DELETE FROM ``ban_appeals`` WHERE `id` = " . $ban['id']) or error(db_error());
 		} else {
 			modLog('Denied ban appeal #' . $ban['id'] . ' for ' . $ban['mask']);
@@ -1706,9 +1748,10 @@ function mod_ban_post(Context $ctx, $board, $delete, $post, $token = false) {
 		: ((strpos((string)$delete, '&board') !== false) ? 'board' : 'single');
 
 	if (isset($_POST['new_ban'], $_POST['reason'], $_POST['length'], $_POST['board'])) {
-		if (isset($_POST['ip']))
+		if (isset($_POST['ip']) && hasPermission($config['mod']['show_ip'], $board))
 			$ip = $_POST['ip'];
 
+		imgboard_require_ban_scope($_POST['board'] == '*' ? false : $_POST['board']);
 		Bans::new_ban($ip, $_POST['reason'], $_POST['length'], $_POST['board'] == '*' ? false : $_POST['board'],
 			false, $config['ban_show_post'] ? $_post : false);
 
@@ -1732,7 +1775,7 @@ function mod_ban_post(Context $ctx, $board, $delete, $post, $token = false) {
 			if (($scope === 'board' || $scope === 'global') && function_exists('imgboard_delete_posts_by_ip')) {
 				// B&D+ / B&D++: ban, then delete every post by this IP.
 				$global = ($scope === 'global');
-				if ($global && !hasPermission($config['mod']['deletebyip_global'], $board))
+				if ($global && !hasPermission($config['mod']['deletebyip_global'], '*'))
 					error($config['error']['noaccess']);
 				if (!$global && !hasPermission($config['mod']['deletebyip'], $board))
 					error($config['error']['noaccess']);
@@ -1790,7 +1833,8 @@ function mod_edit_post(Context $ctx, $board, $edit_raw_html, $postID) {
 
 	if (isset($_POST['name'], $_POST['email'], $_POST['subject'], $_POST['body'])) {
 		// Remove any modifiers they may have put in
-		$_POST['body'] = remove_modifiers($_POST['body']);
+		// Escaping afterwards stops nested tags from re-forming a modifier once the inner one is removed.
+		$_POST['body'] = escape_markup_modifiers((string)remove_modifiers($_POST['body']));
 
 		// Add back modifiers in the original post
 		$modifiers = extract_modifiers($post['body_nomarkup']);
@@ -1804,7 +1848,7 @@ function mod_edit_post(Context $ctx, $board, $edit_raw_html, $postID) {
 			$query = prepare(sprintf('UPDATE ``posts_%s`` SET `name` = :name, `email` = :email, `subject` = :subject, `body_nomarkup` = :body WHERE `id` = :id', $board));
 		$query->bindValue(':id', $postID);
 		$query->bindValue(':name', $_POST['name']);
-		$query->bindValue(':email', $_POST['email']);
+		$query->bindValue(':email', htmlspecialchars($_POST['email'], ENT_QUOTES, 'UTF-8', false));
 		$query->bindValue(':subject', $_POST['subject']);
 		$query->bindValue(':body', $_POST['body']);
 		if ($edit_raw_html) {
@@ -1955,7 +1999,7 @@ function mod_deletebyip(Context $ctx, $boardName, $post, $global = false) {
 	if (!$global && !hasPermission($config['mod']['deletebyip'], $boardName))
 		error($config['error']['noaccess']);
 
-	if ($global && !hasPermission($config['mod']['deletebyip_global'], $boardName))
+	if ($global && !hasPermission($config['mod']['deletebyip_global'], '*'))
 		error($config['error']['noaccess']);
 
 	// Find IP address
@@ -2020,6 +2064,12 @@ function mod_deletebyip(Context $ctx, $boardName, $post, $global = false) {
 	header('Location: ?/' . sprintf($config['board_path'], $boardName) . $config['file_index'], true, $config['redirect_http']);
 }
 
+// Staff may manage accounts ranked below their own, and themselves. Root manages everyone.
+function imgboard_can_manage_user(array $actor, array $target): bool {
+	$rank = (int)($actor['real_type'] ?? $actor['type']);
+	return $rank === 40 || (int)$actor['id'] === (int)$target['id'] || (int)$target['type'] < $rank;
+}
+
 function mod_user(Context $ctx, $uid) {
 	global $mod;
 	$config = $ctx->get('config');
@@ -2032,6 +2082,9 @@ function mod_user(Context $ctx, $uid) {
 	$query->execute() or error(db_error($query));
 	if (!$user = $query->fetch(PDO::FETCH_ASSOC))
 		error($config['error']['404']);
+
+	if (!imgboard_can_manage_user($mod, $user))
+		error($config['error']['noaccess']);
 
 	if (hasPermission($config['mod']['editusers']) && isset($_POST['username'], $_POST['password'])) {
 		if (isset($_POST['allboards'])) {
@@ -2260,12 +2313,15 @@ function mod_user_promote(Context $ctx, $uid, $action) {
 	if (!hasPermission($config['mod']['promoteusers']))
 		error($config['error']['noaccess']);
 
-	$query = prepare("SELECT `type`, `username` FROM ``mods`` WHERE `id` = :id");
+	$query = prepare("SELECT `id`, `type`, `username` FROM ``mods`` WHERE `id` = :id");
 	$query->bindValue(':id', $uid);
 	$query->execute() or error(db_error($query));
 
 	if (!$mod = $query->fetch(PDO::FETCH_ASSOC))
 		error($config['error']['404']);
+
+	if (!$actor || !imgboard_can_manage_user($actor, $mod))
+		error($config['error']['noaccess']);
 
 	$new_group = false;
 
@@ -2850,7 +2906,9 @@ function mod_config(Context $ctx, $board_config = false) {
 		}
 
 		if (!empty($config_append)) {
-			$config_append = "\n// Changes made via web editor by \"" . $mod['username'] . "\" @ " . date('r') . ":\n" . $config_append . "\n";
+			// The name lands in a PHP comment: a newline or closing tag in it would become code.
+			$editor = preg_replace('/[^\p{L}\p{N} _.@-]/u', '?', $mod['username']);
+			$config_append = "\n// Changes made via web editor by \"" . $editor . "\" @ " . date('r') . ":\n" . $config_append . "\n";
 			if (!is_file($config_file))
 				$config_append = "<?php\n\n$config_append";
 			if (!@file_put_contents($config_file, $config_append, FILE_APPEND)) {

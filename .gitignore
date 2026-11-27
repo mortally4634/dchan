@@ -14,6 +14,7 @@
 
 # instance-config
 /inc/secrets.php
+/inc/instance-salts.php
 
 # .installed
 /.installed

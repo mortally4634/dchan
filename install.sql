@@ -140,12 +140,8 @@ CREATE TABLE IF NOT EXISTS `mods` (
   UNIQUE KEY `id` (`id`,`username`)
 ) ENGINE=InnoDB  DEFAULT CHARSET=utf8mb4 AUTO_INCREMENT=1 ;
 
---
--- Dumping data for table `mods`
---
-
-INSERT INTO `mods` VALUES
-(1, 'admin', 'cedad442efeef7112fed0f50b011b2b9bf83f6898082f995f69dd7865ca19fb7', '4a44c6c55df862ae901b413feecb0d49', 30, '*');
+-- No account is seeded here: tools/imgboard-rebuild.php (or install.php) creates
+-- `admin` with a random password and shows it once.
 
 -- --------------------------------------------------------
 

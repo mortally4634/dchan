@@ -23,7 +23,7 @@
 			}
 			
 			
-			$this->excluded = explode(' ', $settings['exclude']);
+			$this->excluded = array_merge(explode(' ', $settings['exclude']), $config['imgboard_staff_boards'] ?? []);
 			
 			if ($action == 'all' || $action == 'post' || $action == 'post-thread' || $action == 'post-delete') {
 				$action = generation_strategy('sb_index', array());
@@ -54,7 +54,7 @@
 			foreach ($boards as &$_board) {
 				if (in_array($_board['uri'], $this->excluded))
 					continue;
-				$query .= sprintf("SELECT *, '%s' AS `board` FROM ``posts_%s`` WHERE `files` IS NOT NULL UNION ALL ", $_board['uri'], $_board['uri']);
+				$query .= sprintf("SELECT *, '%s' AS `board` FROM ``posts_%s`` WHERE `files` IS NOT NULL AND `approved` = 1 UNION ALL ", $_board['uri'], $_board['uri']);
 			}
 			$query = preg_replace('/UNION ALL $/', 'ORDER BY `time` DESC LIMIT ' . (int)$settings['limit_images'], $query);
 			
@@ -98,7 +98,7 @@
 			foreach ($boards as &$_board) {
 				if (in_array($_board['uri'], $this->excluded))
 					continue;
-				$query .= sprintf("SELECT *, '%s' AS `board` FROM ``posts_%s`` UNION ALL ", $_board['uri'], $_board['uri']);
+				$query .= sprintf("SELECT *, '%s' AS `board` FROM ``posts_%s`` WHERE `approved_link` = 1 UNION ALL ", $_board['uri'], $_board['uri']);
 			}
 			$query = preg_replace('/UNION ALL $/', 'ORDER BY `time` DESC LIMIT ' . (int)$settings['limit_posts'], $query);
 			$query = query($query) or error(db_error());

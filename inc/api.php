@@ -145,7 +145,8 @@ class Api {
 
 		// Handle files
 		// Note: 4chan only supports one file, so only the first file is taken into account for 4chan-compatible API.
-		if (isset($post->files) && $post->files && !$threadsPage) {
+		// Pending files are left out: publishing their names would bypass approval.
+		if (isset($post->files) && $post->files && !$threadsPage && (!isset($post->approved) || $post->approved)) {
 			$file = $post->files[0];
 			$this->translateFile($file, $post, $apiPost);
 

@@ -34,7 +34,7 @@
 {# Quick "note on poster" jump for note-capable roles without show_ip (Mediators,
    Janitors); Mods+ use the IP page's own note form. #}
 {% if mod|hasPermission(config.mod.create_notes, board.uri) and not mod|hasPermission(config.mod.show_ip, board.uri) %}
-	<a title="{% trans %}Add a note on this poster{% endtrans %}" href="?/{{ secure_link(board.dir ~ 'noteip/' ~ post.id) }}">[{% trans %}note{% endtrans %}]</a>&nbsp;
+	<a title="{% trans %}Add a note on this poster{% endtrans %}" href="?/{{ board.dir }}noteip/{{ post.id }}">[{% trans %}note{% endtrans %}]</a>&nbsp;
 {% endif %}
 
 {% if not post.thread %}

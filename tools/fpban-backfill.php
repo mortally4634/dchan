@@ -1,6 +1,6 @@
 <?php
 /*
- *  One-off: make every EXISTING ban a fingerprint ban too, wherever a fingerprint
+ *  One-off: make every EXISTING site-wide ban a fingerprint ban too, wherever a fingerprint
  *  is knowable - from the banned post stored on the ban, and from fingerprints seen
  *  at a single-IP ban's address (imgboard_fp). Range bans with no post are skipped
  *  (no single fingerprint to capture). Idempotent: re-running just de-dupes.
@@ -15,7 +15,7 @@ if (!function_exists('imgboard_fp_ban_add')) {
 	exit(1);
 }
 
-$q = query("SELECT `ipstart`, `ipend`, `expires`, `reason`, `post` FROM ``bans``") or error(db_error());
+$q = query("SELECT `ipstart`, `ipend`, `expires`, `reason`, `post` FROM ``bans`` WHERE `board` IS NULL") or error(db_error());
 $bans = $q->fetchAll(PDO::FETCH_ASSOC);
 
 $now = time();

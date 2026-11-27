@@ -23,6 +23,11 @@
 	$config['sitetitle']     = 'example.com';
 	$config['root']          = '/';
 
+	// Strip camera / GPS metadata from uploads without recompressing them (needs exiftool,
+	// which docker/php/Dockerfile installs).
+	$config['strip_exif']   = true;
+	$config['use_exiftool'] = true;
+
 	// ImgOps reverse-image-search link next to every image (the other engines stay off).
 	$config['image_identification']        = true;
 	$config['image_identification_imgops'] = true;
@@ -62,6 +67,12 @@
 	$config['mod']['deletebyip_global'] = 10; // JANITOR - [D++] / [B&D++]
 	$config['mod']['ban']               = 10; // JANITOR - [B]
 	$config['mod']['bandelete']         = 10; // JANITOR - [B&D]
+
+	// Root only: each of these lets its holder run code on the server or script in other staff
+	// members' browsers, so lowering one hands that rank control of the whole site.
+	$config['mod']['edit_config'] = 40; // config editor
+	$config['mod']['themes']      = 40; // themes write files with chosen names
+	$config['mod']['rawhtml']     = 40; // unfiltered HTML in posts and pages
 
 	// DTEG (Device Tracking & Entropy Gathering): client browser fingerprinting.
 	// Runs on every board/thread/index page, stamps a stable hash on posts
@@ -112,10 +123,8 @@
 	 * ------------------------------------------------------------- */
 	$config['cookies']['secure_login_only'] = (int)(getenv('VICHAN_SECURE_LOGIN_ONLY') ?: 0);
 
-	// Fixed cookie / trip salts so mod sessions survive restarts.
-	// (Change these if you ever expose this publicly beyond a test board.)
-	$config['cookies']['salt']   = 'imgboard-cookie-salt-change-me';
-	$config['secure_trip_salt']  = 'imgboard-trip-salt-change-me';
+	// Salts are generated per instance (inc/salts.php, applied at the end of this file).
+	// Set your own in inc/secrets.php if you want to manage them yourself.
 
 	/* ---------------------------------------------------------------
 	 * File Pending approval system
@@ -171,7 +180,8 @@
 	$config['mod']['custom_pages']['/ppa/reject/(\d+)']    = 'secure ppa_reject';
 
 	/* ---------------------------------------------------------------
-	 * Staff stay logged in via a long-lived mod cookie. Optionally the
+	 * Staff stay logged in via a mod cookie; logging out ends every session
+	 * of that account. Optionally the
 	 * session can be tied to the client IP (lock_ip) so a stolen cookie
 	 * can't be replayed from another address.
 	 *
@@ -188,7 +198,7 @@
 	 * Set here (re-runs on every loadConfig) so it survives the
 	 * openBoard config reload.
 	 * ------------------------------------------------------------- */
-	$config['cookies']['expire'] = 60 * 60 * 24 * 365 * 10; // ~10 years
+	$config['cookies']['expire'] = 60 * 60 * 24 * 30; // 30 days, enforced server-side too
 	$config['mod']['lock_ip']    = getenv('VICHAN_LOCK_IP') === '1';
 
 	// Let banned users appeal (the appeal form shows on the ban screen; pending appeals
@@ -209,7 +219,7 @@
 	// a blank vichan version before/without install. Pin the upstream vichan
 	// version here as a fallback; the footer prefers config.version when present.
 	$config['imgboard_vichan_version']    = '5.2.2';
-	$config['imgboard_dchan_version']     = '1.1.9';
+	$config['imgboard_dchan_version']     = '1.2.0';
 
 	// Country flags: use the individual PNG files in static/flags/ (all present)
 	// rather than the condensed CSS sprite, so flags render without extra setup.
@@ -265,3 +275,7 @@
 	imgboard_apply_board_overrides();
 
 	@include('inc/secrets.php');
+
+	// After secrets.php, so your own salts win and only public ones are replaced.
+	require_once __DIR__ . '/salts.php';
+	imgboard_replace_public_salts($config, __DIR__ . '/instance-salts.php');

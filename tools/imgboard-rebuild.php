@@ -31,6 +31,9 @@ $required = [
 	'fp_hash'        => "varchar(32) CHARACTER SET ascii DEFAULT NULL",
 ];
 foreach (listBoards() as $b) {
+	// A fresh database lists boards (install.sql) that have no posts table yet.
+	openBoard($b['uri']);
+	query(Element('posts.sql', [ 'board' => $b['uri'] ])) or error(db_error());
 	$table = 'posts_' . $b['uri'];
 	$q = prepare("SELECT `COLUMN_NAME` FROM information_schema.columns WHERE table_schema = :db AND table_name = :t");
 	$q->bindValue(':db', $config['db']['database']);
@@ -126,6 +129,11 @@ if ($q && !$q->fetch()) {
 	query($sql) or error(db_error());
 	cache::delete('all_boards');
 	echo "created /test/ staff board\n";
+}
+
+$new_password = secure_admin_account();
+if ($new_password !== null) {
+	echo "admin account: username admin, password $new_password (shown once - change it after logging in)\n";
 }
 
 // Imgboard: make sure the site has a Root owner. Seed Owner as Root only

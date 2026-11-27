@@ -87,6 +87,11 @@ try {
 		exit;
 	}
 
+	// Addresses are cheap to rotate (IPv6), so new rows are also capped site-wide.
+	// shortcut: fixed 1000/hour for all visitors together; raise it if a busy site loses real data.
+	$q = query("SELECT `first_seen` FROM ``imgboard_fp`` ORDER BY `id` DESC LIMIT 1 OFFSET 999");
+	$flooded = $q && (int)$q->fetchColumn() > $now - 3600;
+
 	// Is this page load from a logged-in staff member? If so, still record the sighting
 	// (so admins can view it at ?/fp/<hash>), but also stamp the staff member's
 	// identifiers into imgboard_staff_fp so they are excluded from the user fingerprint
@@ -136,7 +141,9 @@ try {
 	$q->bindValue(':components2', $components);
 	$q->bindValue(':ua2', $ua);
 	$q->bindValue(':now2', $now, PDO::PARAM_INT);
-	$q->execute();
+	if (!$flooded) {
+		$q->execute(); // the ban check below still runs while capped
+	}
 
 	// Entry ban check: boards are static HTML, so this is the only server round-trip
 	// on a plain page view. If this (non-staff) visitor is under an IP/range ban or a

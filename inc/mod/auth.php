@@ -29,13 +29,19 @@ function imgboard_ip_lock_key(string $ip): string {
 	return $ip;
 }
 
+// Issue time from a session salt "<time>.<random>". Cut at the dot first: casting the whole
+// salt would read e.g. "1795739253.00e826" as scientific notation and give 0.
+function imgboard_cookie_issued(string $salt): int {
+	return (int)explode('.', $salt, 2)[0];
+}
+
 // create a hash/salt pair for validate logins
 function mkhash(string $username, $password = null, $salt = false) {
 	global $config;
 
 	if (!$salt) {
-		// create some sort of salt for the hash
-		$salt = substr(base64_encode(sha1(random_int(0, PHP_INT_MAX) . time(), true) . $config['cookies']['salt']), 0, 15);
+		// The salt starts with the issue time. It is part of the hash, so it cannot be altered.
+		$salt = time() . '.' . bin2hex(random_bytes(8));
 
 		$generated_salt = true;
 	}
@@ -85,6 +91,33 @@ function test_password(string $password, string $salt, string $test): array {
 
 function generate_salt(): string {
 	return strtr(base64_encode(random_bytes(16)), '+', '.');
+}
+
+// First run: creates the owner account `admin` with a random password. Also replaces the old
+// stock "password" on sites seeded before. Returns the new password, or null if nothing changed.
+function secure_admin_account(): ?string {
+	$query = query("SELECT COUNT(*) FROM ``mods``") or error(db_error());
+	$empty = !$query->fetchColumn();
+	if (!$empty) {
+		$query = query("SELECT `id`, `password`, `version` FROM ``mods`` WHERE `username` = 'admin'") or error(db_error());
+		$admin = $query->fetch(PDO::FETCH_ASSOC);
+		if (!$admin || !test_password($admin['password'], $admin['version'], 'password')[1]) {
+			return null;
+		}
+	}
+
+	$password = bin2hex(random_bytes(12));
+	list($version, $hash) = crypt_password($password);
+	if ($empty) {
+		$query = prepare("INSERT INTO ``mods`` (`username`, `password`, `version`, `type`, `boards`) VALUES ('admin', :password, :version, 40, '*')");
+	} else {
+		$query = prepare("UPDATE ``mods`` SET `password` = :password, `version` = :version WHERE `id` = :id");
+		$query->bindValue(':id', $admin['id'], PDO::PARAM_INT);
+	}
+	$query->bindValue(':password', $hash);
+	$query->bindValue(':version', $version);
+	$query->execute() or error(db_error($query));
+	return $password;
 }
 
 function calc_cookie_name(bool $is_https, bool $is_path_jailed, string $base_name): string {
@@ -300,8 +333,12 @@ function check_login(Context $ctx, bool $prompt = false): void {
 		$query->execute() or error(db_error($query));
 		$user = $query->fetch(PDO::FETCH_ASSOC);
 
-		// validate password hash
-		if ($cookie[1] !== mkhash($cookie[0], $user['password'], $cookie[2])) {
+		// Reject expired cookies, cookies issued before this account's last logout, and bad hashes.
+		$issued = imgboard_cookie_issued($cookie[2]);
+		if (!$user
+				|| $issued <= time() - $config['cookies']['expire']
+				|| $issued <= (int)imgboard_setting_get('logout_' . $user['id'], '0')
+				|| !hash_equals(mkhash($cookie[0], $user['password'], $cookie[2]), $cookie[1])) {
 			// Malformed cookies
 			destroyCookies();
 			if ($prompt) {

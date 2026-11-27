@@ -1,3 +1,4 @@
+{% autoescape 'html' %}{# every value here is read out of an untrusted upload #}
 <div class="steg">
 	<p>
 		<a href="{{ file_url }}" target="_blank">{{ file }}</a> - {{ report.type }},
@@ -89,3 +90,4 @@
 {% endfor %}</pre>
 	{% endif %}
 </div>
+{% endautoescape %}

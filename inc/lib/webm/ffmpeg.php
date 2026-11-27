@@ -28,7 +28,17 @@ function is_valid_webm($ffprobe_out) {
     if ($ffprobe_out['format']['format_name'] != 'matroska,webm')
       return array('code' => 2, 'msg' => $config['error']['invalidwebm']);
   } elseif ($extension === 'mp4') {
-    if ($ffprobe_out['streams'][0]['codec_name'] != 'h264' && $ffprobe_out['streams'][1]['codec_name'] != 'aac')
+    // An MP4 container holding H.264 video first, with only AAC / MP3 audio. Cover art is ignored.
+    $allowed = array('video' => array('h264'), 'audio' => array('aac', 'mp3'));
+    $bad = strpos($ffprobe_out['format']['format_name'], 'mp4') === false
+      || ($ffprobe_out['streams'][0]['codec_name'] ?? '') !== 'h264';
+    foreach ($ffprobe_out['streams'] ?? array() as $stream) {
+      $type = $stream['codec_type'] ?? '';
+      if (isset($allowed[$type]) && empty($stream['disposition']['attached_pic'])
+          && !in_array($stream['codec_name'] ?? '', $allowed[$type], true))
+        $bad = true;
+    }
+    if ($bad)
       return array('code' => 2, 'msg' => $config['error']['invalidwebm']);
   } else {
     return array('code' => 1, 'msg' => $config['error']['genwebmerror']);  

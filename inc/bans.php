@@ -38,14 +38,13 @@ class Bans {
 	}
 
 	static private function findSingleAutoGc(string $ip, int $ban_id, bool $require_ban_view) {
-		// Use OR in the query to also garbage collect bans.
+		// Only bans covering this address: the ID alone must never reveal someone else's ban.
 		$query = prepare(
 			'SELECT ``bans``.* FROM ``bans``
-			 WHERE ((`ipstart` = :ip OR (:ip >= `ipstart` AND :ip <= `ipend`)) OR (``bans``.id = :id))
+			 WHERE (`ipstart` = :ip OR (:ip >= `ipstart` AND :ip <= `ipend`))
 			 ORDER BY `expires` IS NULL, `expires` DESC'
 		);
 
-		$query->bindValue(':id', $ban_id);
 		$query->bindValue(':ip', inet_pton($ip));
 
 		$query->execute() or error(db_error($query));
@@ -70,15 +69,15 @@ class Bans {
 		return $found_ban;
 	}
 
-	static private function findSingleNoGc(int $ban_id) {
+	static private function findSingleNoGc(string $ip, int $ban_id) {
 		$query = prepare(
 			'SELECT ``bans``.* FROM ``bans``
-			 WHERE ``bans``.id = :id
-			 ORDER BY `expires` IS NULL, `expires` DESC
+			 WHERE ``bans``.id = :id AND (`ipstart` = :ip OR (:ip >= `ipstart` AND :ip <= `ipend`))
 			 LIMIT 1'
 		);
 
 		$query->bindValue(':id', $ban_id);
+		$query->bindValue(':ip', inet_pton($ip));
 
 		$query->execute() or error(db_error($query));
 		$ret = $query->fetch(PDO::FETCH_ASSOC);
@@ -272,7 +271,7 @@ class Bans {
 		if ($auto_gc) {
 			return self::findSingleAutoGc($ip, $ban_id, $require_ban_view);
 		} else {
-			return self::findSingleNoGc($ban_id);
+			return self::findSingleNoGc($ip, $ban_id);
 		}
 	}
 
@@ -463,10 +462,10 @@ class Bans {
 		// fingerprint is knowable (a CIDR/wildcard range has no single fingerprint).
 		$fp_expires = (is_int($length) && $length > time()) ? $length : null;
 		$fp_by = isset($mod['username']) ? $mod['username'] : null;
-		if ($post && function_exists('imgboard_fp_ban_capture_from_post')) {
+		if (!$ban_board && $post && function_exists('imgboard_fp_ban_capture_from_post')) {
 			imgboard_fp_ban_capture_from_post($post, $reason !== '' ? $reason : null, $fp_expires, $fp_by);
 		}
-		if (function_exists('imgboard_fp_ban_capture_from_ip') && filter_var($mask, FILTER_VALIDATE_IP) !== false) {
+		if (!$ban_board && function_exists('imgboard_fp_ban_capture_from_ip') && filter_var($mask, FILTER_VALIDATE_IP) !== false) {
 			imgboard_fp_ban_capture_from_ip($mask, $reason !== '' ? $reason : null, $fp_expires, $fp_by);
 		}
 

@@ -18,6 +18,7 @@ RUN apk add --no-cache \
     graphicsmagick \
     gifsicle \
     ffmpeg \
+    exiftool \
     bind-tools \
     gettext \
     gettext-dev \

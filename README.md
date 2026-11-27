@@ -48,15 +48,16 @@ cp .env.example .env                       # then edit: set every password/token
 docker compose up -d --build
 ```
 
-`install.sql` seeds the schema and the stock vichan `admin` account on first boot.
-Open `http://127.0.0.1:9080/install.php` to finish setup, then log in at `/mod.php`
-as `admin` and **change the password immediately**.
-
-Then build the static pages and create the two staff-only boards (`/j/` and `/test/`):
+`install.sql` seeds the schema on first boot. No account is seeded. Run this to create
+the `admin` owner account, build the static pages and create the two staff-only boards
+(`/j/` and `/test/`):
 
 ```bash
 docker compose exec -T -u www-data -w /var/www php php tools/imgboard-rebuild.php
 ```
+
+**The first run prints the `admin` password once.** Save it, log in at
+`http://127.0.0.1:9080/mod.php`, then change it.
 
 This is idempotent, so re-run it after any code change. It creates `/j/` (staff board,
 Staff IDs on) and `/test/` (staff scratch board) if they don't exist, seeds the Root owner,
@@ -79,13 +80,25 @@ Notes:
 - Reset the database by stopping the stack and deleting `./local-instances/<INSTANCE>/db`;
   `install.sql` re-seeds on the next boot.
 
+## Upgrading from before 1.2.0
+
+Run `docker compose up -d --build` (the new image adds `exiftool`), `docker compose restart web`,
+then `tools/imgboard-rebuild.php`. Expect:
+
+- Staff are logged out once. Sessions now last 30 days, and logging out ends them all.
+- If `admin` still used the stock password, the rebuild replaces it and prints the new one.
+- Sites that never set their own salts get new ones: poster IDs, secure tripcodes and
+  device IDs change, and older posts can no longer be deleted with their password.
+- The config editor, themes and raw HTML are now Root only.
+
 ## New site checklist
 
 1. Replace `example.com` and, if you like, the `imgboard` prefix.
-2. Create `inc/secrets.php` (never commit it) and change the cookie/trip salts in
-   `inc/instance-config.php`.
-3. `docker compose up` (see `compose.yml`, `docker/`), then open `/install.php`.
-   `install.sql` seeds the stock vichan `admin` account: change its password immediately.
+2. Salts need no setup: random ones are generated on first run in `inc/instance-salts.php`
+   (in Docker, under `local-instances/<INSTANCE>/www/inc/`). Back that file up with the
+   database. To manage salts yourself, set them in `inc/secrets.php` (never commit it).
+3. `docker compose up -d --build` (see `compose.yml`, `docker/`), then run
+   `tools/imgboard-rebuild.php` as shown above and save the printed `admin` password.
 4. Add a logo (`$config['logo']`), favicon (`/favicon.ico`) and banners in `static/banners/`
    (the banner endpoint returns 404 until one exists).
 5. Create a `meta` board: the Schizo reset (below) keeps it and wipes everything else.
@@ -169,12 +182,13 @@ New sensitive features should pick an explicit level in `inc/instance-config.php
 
 ## Security rules for changes
 
-1. Never commit secrets (`.env`, `inc/secrets.php`).
+1. Never commit secrets (`.env`, `inc/secrets.php`, `inc/instance-salts.php`).
 2. SQL only through `prepare()` and `bindValue()`; board and table names only from validated sources.
 3. Mod actions need both gates: `secure` / `secure_POST` (CSRF token) on the route and a
    `hasPermission()` check in the handler. Hiding a button is not a gate.
 4. Log every staff action with `modLog()`.
-5. Escape output; use `|raw` only deliberately.
+5. Template autoescaping is **off**: add `|e` to every value a visitor can influence,
+   including file contents and URLs. Use `|raw` only deliberately.
 6. Every automatic defence (filter, ban, rate limit, hash ban) needs a staff screen and an undo.
 7. Bulk-data access (fingerprints, IPs) is Manager+.
 
@@ -190,7 +204,7 @@ Built on the work of:
 - **Tinyboard** 0.9.6 — Copyright © 2010-2014 Tinyboard Development Group.
   <https://github.com/savetheinternet/Tinyboard>
 - **vichan** — Copyright © 2012-2025 vichan-devel. <https://github.com/vichan-devel/vichan>
-- **dchan** 1.1.9 — this fork. <https://github.com/mortally4634/dchan>
+- **dchan** 1.2.0 — this fork. <https://github.com/mortally4634/dchan>
 
 Licenses: [LICENSE.md](LICENSE.md) covers dchan; [LICENSE.Tinyboard.md](LICENSE.Tinyboard.md) covers the
 Tinyboard and vichan code this fork is built on.

@@ -20,6 +20,8 @@
 	if (isset($config['search']['disallowed_boards'])) {
 		$boards = array_values(array_diff($boards, $config['search']['disallowed_boards']));
 	}
+	// Staff-only boards are never searchable from the public page.
+	$boards = array_values(array_diff($boards, $config['imgboard_staff_boards'] ?? []));
 	
 	$body = Element('search_form.html', Array('boards' => $boards, 'board' => isset($_GET['board']) ? $_GET['board'] : false, 'search' => isset($_GET['search']) ? str_replace('"', '&quot;', utf8tohtml($_GET['search'])) : false));
 	

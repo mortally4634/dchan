@@ -55,7 +55,7 @@
 			{% if public %}
 				<a href="?page={{ i + 1 }}&amp;board={{ board|url_encode }}">[{{ i + 1 }}]</a> 
 			{% else %}
-				<a href="?/log{% if username %}:{{ username }}{% elseif board %}:b:{{ board }}{% endif %}/{{ i + 1 }}">[{{ i + 1 }}]</a> 
+				<a href="?/log{% if username %}:{{ username|e }}{% elseif board %}:b:{{ board|e }}{% endif %}/{{ i + 1 }}">[{{ i + 1 }}]</a> 
 			{% endif %}
 		{% endfor %}
 	</p>
