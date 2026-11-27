@@ -1,35 +1,31 @@
 <?php
-// Self-check for the fingerprint-ban matcher (inc/mod/pending.php).
+// Self-check for the pure parts of fingerprint banning (inc/mod/pending.php).
 // Run: docker compose exec -T -u www-data -w /var/www php php tools/selfcheck-fpban.php
 define('TINYBOARD', 1);
 $config = ['cache' => ['enabled' => false]];
 require __DIR__ . '/../inc/mod/pending.php';
 
-$now = 1000;
 $fail = 0;
 function chk($cond, $msg) { global $fail; if (!$cond) { echo "FAIL $msg\n"; $fail++; } }
 
-$row = ['fp_hash' => 'abc123', 'cookie_id' => 'deadbeef', 'hwid' => 'hw00', 'expires' => null];
+// network key: IPv4 /24, IPv6 /64
+chk(imgboard_net_key('93.184.216.10') === '93.184.216.0/24', 'IPv4 /24');
+chk(imgboard_net_key('93.184.216.255') === imgboard_net_key('93.184.216.1'), 'same /24');
+chk(imgboard_net_key('93.184.217.1') !== imgboard_net_key('93.184.216.1'), 'other /24');
+chk(imgboard_net_key('2a00:23c7:891d:ea01:e5f7:da55:c87c:15d5') === '2a00:23c7:891d:ea01::/64', 'IPv6 /64');
+chk(imgboard_net_key('::ffff:93.184.216.10') === '93.184.216.0/24', 'IPv4-mapped address counts as IPv4');
+// shared or meaningless networks never take part in device matching
+foreach (['', 'junk', '127.0.0.1', '10.0.0.5', '172.18.0.4', '192.168.0.9', '::1', 'fdd0:0:0:0:1:2:3:4', 'fdd1::9', 'fe80::1', '::ffff:10.0.0.1', '100.64.0.1'] as $ip) {
+	chk(imgboard_net_key($ip) === '', "no network key for [$ip]: " . imgboard_net_key($ip));
+}
 
-// matches on fp_hash
-chk(imgboard_fp_ban_row_matches($row, 'abc123', null, $now) === true, 'fp_hash match');
-// matches on cookie_id
-chk(imgboard_fp_ban_row_matches($row, null, 'deadbeef', $now) === true, 'cookie_id match');
-// no match on different values
-chk(imgboard_fp_ban_row_matches($row, 'other', 'nope', $now) === false, 'no false match');
-// hwid is NEVER matched (collision-prone) - visitor has the hwid but no fp/cookie
-chk(imgboard_fp_ban_row_matches($row, null, null, $now) === false, 'hwid alone must not match');
-// empty visitor identifiers do not match empty stored fields
-$blank = ['fp_hash' => '', 'cookie_id' => '', 'hwid' => '', 'expires' => null];
-chk(imgboard_fp_ban_row_matches($blank, '', '', $now) === false, 'empty identifiers never match');
-chk(imgboard_fp_ban_row_matches($blank, null, null, $now) === false, 'null identifiers never match');
-// expiry respected
-$expired = ['fp_hash' => 'abc123', 'cookie_id' => '', 'hwid' => '', 'expires' => 500];
-chk(imgboard_fp_ban_row_matches($expired, 'abc123', null, $now) === false, 'expired ban does not match');
-$active = ['fp_hash' => 'abc123', 'cookie_id' => '', 'hwid' => '', 'expires' => 1500];
-chk(imgboard_fp_ban_row_matches($active, 'abc123', null, $now) === true, 'unexpired ban matches');
-// permanent (null expires) matches
-chk(imgboard_fp_ban_row_matches($row, 'abc123', null, $now) === true, 'permanent ban matches');
+// identifiers: only well-formed ones are used
+$uid = str_repeat('ab', 16);
+chk(imgboard_visitor_ids(['imgboard_uid' => $uid, 'imgboard_fp' => 'deadbeefdeadbeef']) === [$uid, 'deadbeefdeadbeef'], 'good identifiers');
+foreach ([[], ['imgboard_uid' => 'short', 'imgboard_fp' => 'xyz'], ['imgboard_uid' => $uid . "\n", 'imgboard_fp' => "deadbeef\n"],
+		['imgboard_uid' => [$uid], 'imgboard_fp' => ['deadbeef']], ['imgboard_uid' => strtoupper($uid), 'imgboard_fp' => str_repeat('a', 33)]] as $bad) {
+	chk(imgboard_visitor_ids($bad) === ['', ''], 'rejected identifiers: ' . json_encode($bad));
+}
 
 echo $fail ? "FAILED $fail\n" : "all fp-ban checks passed\n";
 exit($fail ? 1 : 0);

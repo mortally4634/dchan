@@ -55,5 +55,24 @@ chk(is_valid_webm($mp4([['video', 'mpeg4'], ['audio', 'aac']])) !== null, 'wrong
 chk(is_valid_webm($mp4([['video', 'h264'], ['audio', 'pcm_s16le']])) !== null, 'wrong audio codec rejected');
 chk(is_valid_webm($mp4([['video', 'h264']], 'hls')) !== null, 'wrong container rejected');
 
+// deployment files (present in a source checkout only)
+$root = __DIR__ . '/..';
+if (is_file("$root/compose.yml")) {
+	$compose = file_get_contents("$root/compose.yml");
+	$env = file_get_contents("$root/.env.example");
+	preg_match_all("/getenv\('(VICHAN_[A-Z_]+)'\)/", file_get_contents("$root/inc/instance-config.php"), $m);
+	foreach (array_unique($m[1]) as $var) {
+		chk((bool)preg_match("/^\s+$var:/m", $compose), "compose.yml passes $var to PHP");
+		chk((bool)preg_match("/^#?\s*$var=/m", $env), ".env.example mentions $var");
+	}
+	foreach (['VICHAN_MYSQL_PASSWORD', 'MYSQL_PASSWORD', 'MYSQL_ROOT_PASSWORD', 'VICHAN_CACHE_PASSWORD'] as $var) {
+		chk((bool)preg_match("/^$var=\s*$/m", $env), ".env.example ships no value for $var");
+		chk((bool)preg_match('/\$\{' . $var . ':\?/', $compose), "compose.yml refuses to start without $var");
+	}
+	chk(strpos(file_get_contents("$root/inc/instance-config.php"), "'vichan!'") === false, 'no fallback database password');
+	chk((bool)preg_match('/location ~ \^\/\(\?:[a-z|]*\bvendor\b[a-z|]*\)\//', file_get_contents("$root/docker/nginx/vichan.conf")), 'nginx blocks /vendor/');
+	chk(!is_file("$root/securimage.php"), 'unused securimage.php endpoint is gone');
+}
+
 echo $fail ? "FAILED $fail\n" : "all security checks passed\n";
 exit($fail ? 1 : 0);

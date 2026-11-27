@@ -13,7 +13,7 @@
 	$config['db']['type']     = 'mysql';
 	$config['db']['server']   = getenv('VICHAN_MYSQL_HOST')     ?: 'db';
 	$config['db']['user']     = getenv('VICHAN_MYSQL_USER')     ?: 'vichan';
-	$config['db']['password'] = getenv('VICHAN_MYSQL_PASSWORD') ?: 'vichan!';
+	$config['db']['password'] = getenv('VICHAN_MYSQL_PASSWORD') ?: '';
 	$config['db']['database'] = getenv('VICHAN_MYSQL_NAME')     ?: 'vichan';
 
 	/* ---------------------------------------------------------------
@@ -55,6 +55,10 @@
 	$config['mod']['fp_raw']      = 30; // Admin
 	$config['mod']['fp_hashed']   = 10; // Janitor
 	$config['mod']['fp_ip_token'] = 5;  // Mediator
+	// Fingerprint bans: besides the per-browser cookie, also match the device fingerprint on
+	// the same network (catches a banned user who cleared cookies; an identical phone on that
+	// same network would be caught too). false = match the cookie only.
+	$config['imgboard_fp_ban_device'] = true;
 	// Bulk visitor fingerprint data (the ?/fingerprints list + .zip export of
 	// every visitor's fingerprint .txt). Manager+ only - one tier above Admin.
 	$config['mod']['fp_data']     = 35; // Manager
@@ -219,7 +223,7 @@
 	// a blank vichan version before/without install. Pin the upstream vichan
 	// version here as a fallback; the footer prefers config.version when present.
 	$config['imgboard_vichan_version']    = '5.2.2';
-	$config['imgboard_dchan_version']     = '1.2.1';
+	$config['imgboard_dchan_version']     = '1.2.2';
 
 	// Country flags: use the individual PNG files in static/flags/ (all present)
 	// rather than the condensed CSS sprite, so flags render without extra setup.

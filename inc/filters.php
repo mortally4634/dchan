@@ -174,7 +174,14 @@ class Filter {
 					$this->reject = isset($this->reject) ? $this->reject : true;
 					$this->all_boards = isset($this->all_boards) ? $this->all_boards : false;
 
-					Bans::new_ban($_SERVER['REMOTE_ADDR'], $this->reason, $this->expires, $this->all_boards ? false : $board['uri'], -1);
+					// the request that tripped the filter is the offender
+					$identity = false;
+					if (function_exists('imgboard_visitor_ids')) {
+						imgboard_issue_visitor_id();
+						list($cookie_id, $device) = imgboard_visitor_ids($_COOKIE);
+						$identity = [ 'cookie_id' => $cookie_id, 'fp_hash' => $device, 'ip' => $_SERVER['REMOTE_ADDR'] ];
+					}
+					Bans::new_ban($_SERVER['REMOTE_ADDR'], $this->reason, $this->expires, $this->all_boards ? false : $board['uri'], -1, false, $identity);
 
 					if ($this->reject) {
 						if (isset($this->message)) {

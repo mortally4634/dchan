@@ -10,9 +10,8 @@
  * third-party service - the challenge is a rasterised image, so the answer is
  * never present in the page markup.
  *
- * (The bundled vichan captchas are unusable here: inc/captcha/entrypoint.php is
- * JS-only with placeholder DB credentials, and securimage.php references a
- * Securimage class that was never bundled. This is a self-contained replacement.)
+ * (The bundled vichan captcha is unusable here: inc/captcha/entrypoint.php is
+ * JS-only with placeholder DB credentials. This is a self-contained replacement.)
  */
 require_once 'inc/bootstrap.php';
 

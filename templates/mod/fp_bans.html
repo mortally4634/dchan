@@ -1,9 +1,9 @@
 <div class="fp-bans">
 	<p class="unimportant">
-		Fingerprint bans follow a banned poster across IP changes (matched on the DTEG
-		fingerprint and the per-visitor cookie, never the shared device hwid). They are
-		created automatically by site-wide bans, and enforced when the visitor
-		posts or loads the ban page. Delete one to lift it.
+		These identifiers make a ban follow its target to a new address. A <strong>cookie</strong> is one
+		browser's random id and matches anywhere. A <strong>device</strong> fingerprint only matches on the
+		network shown, because identical phones share it. Unbanning, an accepted appeal or expiry lifts them
+		automatically; <em>remove</em> lifts only the identifiers and leaves the IP ban in place.
 	</p>
 
 	{% if bans is empty %}
@@ -11,25 +11,25 @@
 	{% else %}
 		<table class="mod">
 			<tr>
-				<th>#</th>
-				<th>Fingerprint</th>
-				<th>Cookie</th>
-				<th>hwid</th>
+				<th>Ban #</th>
+				<th>Identifiers</th>
+				<th>Board</th>
 				<th>Reason</th>
 				<th>Expires</th>
-				<th>By</th>
 				<th></th>
 			</tr>
 			{% for b in bans %}
 				<tr>
 					<td>{{ b.id }}</td>
-					<td><code>{{ b.fp_hash|e }}</code></td>
-					<td><code>{{ b.cookie_id|e }}</code></td>
-					<td><code>{{ b.hwid|e }}</code></td>
-					<td>{{ b.reason|e }}</td>
+					<td>
+						{% for l in b.links %}
+							{% if l.cookie_id %}cookie <code>{{ l.cookie_id|e }}</code>{% else %}device <code>{{ l.device|e }}</code> on {{ l.net|e }}{% endif %}<br>
+						{% endfor %}
+					</td>
+					<td>{% if b.board %}/{{ b.board|e }}/{% else %}<em>all</em>{% endif %}</td>
+					<td>{{ b.reason|striptags }}</td>
 					<td>{% if b.expires %}{{ b.expires|date('Y-m-d H:i') }}{% else %}<em>permanent</em>{% endif %}</td>
-					<td>{% if b.by %}{{ b.by|e }}{% else %}<em>system</em>{% endif %}</td>
-					<td><a href="?/fp-bans/delete/{{ b.id }}/{{ b.del_token }}">[delete]</a></td>
+					<td><a href="?/fp-bans/delete/{{ b.id }}/{{ b.del_token }}">[remove]</a></td>
 				</tr>
 			{% endfor %}
 		</table>

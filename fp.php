@@ -9,7 +9,9 @@
  *  panel, and keying on cookie_id bridges a fresh fingerprint to the
  *  visitor's past posts (which already carry that cookie id).
  *
- *  Pure data sink: no output, never discloses errors, responds 204.
+ *  Boards are static files, so this is also where a banned visitor is noticed on a
+ *  plain page view. Answers 204 with no body, except to a banned visitor, who gets
+ *  {"banned":1,"url":"/banned.php"}. Never discloses errors.
  */
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
@@ -25,9 +27,9 @@ if (stripos($_SERVER['CONTENT_TYPE'] ?? '', 'application/json') !== 0) {
 	http_response_code(204);
 	exit;
 }
-// 1 MiB: far above a real payload. Anything larger is refused, never cut short.
-$raw = file_get_contents('php://input', false, null, 0, 1048577);
-if ($raw === false || strlen($raw) < 2 || strlen($raw) > 1048576) {
+// 256 KiB, same as IMGBOARD_FP_MAX_BYTES (not loaded yet). Larger is refused, never cut short.
+$raw = file_get_contents('php://input', false, null, 0, 262145);
+if ($raw === false || strlen($raw) < 2 || strlen($raw) > 262144) {
 	http_response_code(204);
 	exit;
 }
@@ -38,21 +40,60 @@ if (!is_array($data)) {
 }
 
 require 'inc/bootstrap.php';
-require_once 'inc/mod/auth.php'; // mkhash() for the staff-session check below
+require_once 'inc/mod/auth.php'; // the staff-session check below
+
+$hex = function ($v, $max) {
+	return (is_string($v) && preg_match('/\A[a-f0-9]{8,' . $max . '}\z/', $v)) ? $v : null;
+};
+
+$fp_hash     = $hex($data['fp'] ?? null, 32);
+$stable_hash = $hex($data['stable'] ?? null, 32);
+if ($stable_hash === null) {        // the stable hash is the primary key signal
+	http_response_code(204);
+	exit;
+}
+if ($fp_hash === null) { $fp_hash = $stable_hash; }
+
+// Persistent per-visitor cookie id (same cookie post.php stamps on posts).
+// Use '' (not NULL) when absent so the unique key dedups cookieless lurkers.
+list($cookie_id) = imgboard_visitor_ids($_COOKIE);
+$ip = substr($_SERVER['REMOTE_ADDR'] ?? '', 0, 45);
+$now = time();
+$is_staff = false;
+$banned = false;
 
 try {
-	$hex = function ($v, $max) {
-		return (is_string($v) && preg_match('/^[a-f0-9]{8,' . $max . '}$/', $v)) ? $v : null;
-	};
-
-	$fp_hash     = $hex($data['fp'] ?? null, 32);
-	$stable_hash = $hex($data['stable'] ?? null, 32);
-	if ($stable_hash === null) {        // the stable hash is the primary key signal
-		http_response_code(204);
-		exit;
+	// Is this page load from a logged-in staff member? The same test as the mod panel
+	// (not check_login(), whose side effects are unsuitable for this silent sink).
+	$base = $config['cookies']['mod'];
+	foreach ([$base, '__Secure-' . $base, '__Host-' . $base] as $cn) {
+		if (empty($_COOKIE[$cn]) || !is_string($_COOKIE[$cn])) { continue; }
+		$parts = explode(':', $_COOKIE[$cn]);
+		if (count($parts) !== 3) { continue; }
+		$mq = prepare("SELECT `id`, `password` FROM ``mods`` WHERE `username` = :u");
+		$mq->bindValue(':u', $parts[0]);
+		if ($mq->execute() && imgboard_session_valid($parts, $mq->fetch(PDO::FETCH_ASSOC))) {
+			$is_staff = true;
+			break;
+		}
 	}
-	if ($fp_hash === null) { $fp_hash = $stable_hash; }
 
+	// Entry ban check, before any flood limit so that flooding cannot switch it off.
+	// Only site-wide bans send a visitor away from every page. Best-effort: with JS off
+	// they can still view, but checkBan() still blocks their posting.
+	if (!$is_staff) {
+		foreach (Bans::find($ip, '', false, null, false) as $b) {
+			if (empty($b['board']) && (empty($b['expires']) || (int)$b['expires'] >= $now)) { $banned = true; break; }
+		}
+		if (!$banned) {
+			$banned = imgboard_fp_ban_match($cookie_id, $stable_hash, $ip, '') !== null;
+		}
+	}
+} catch (\Throwable $e) {
+	error_log('fingerprint ban check failed: ' . $e->getMessage());
+}
+
+try {
 	$trust = isset($data['trust']) ? max(0, min(100, (int)$data['trust'])) : null;
 
 	$lies = '[]';
@@ -67,22 +108,13 @@ try {
 		$components = json_encode($data['components']); // whole: cut-off JSON cannot be read back
 	}
 
-	// Persistent per-visitor cookie id (same cookie post.php stamps on posts).
-	// Use '' (not NULL) when absent so the unique key dedups cookieless lurkers.
-	$cookie_id = '';
-	if (isset($_COOKIE['imgboard_uid']) && preg_match('/^[a-f0-9]{32}$/', $_COOKIE['imgboard_uid'])) {
-		$cookie_id = $_COOKIE['imgboard_uid'];
-	}
-
 	// Header-derived hwid, computed exactly as post.php does, for cross-ref.
 	$hwid = substr(sha1('imgboard-hwid' . $config['cookies']['salt']
 		. ($_SERVER['HTTP_USER_AGENT'] ?? '') . '|'
 		. ($_SERVER['HTTP_ACCEPT_LANGUAGE'] ?? '') . '|'
 		. ($_SERVER['HTTP_ACCEPT_ENCODING'] ?? '')), 0, 16);
 
-	$ip = substr($_SERVER['REMOTE_ADDR'] ?? '', 0, 45);
 	$ua = substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 512);
-	$now = time();
 
 	imgboard_fp_log('fp', [
 		'cookie_id' => $cookie_id, 'hwid' => $hwid, 'fp_hash' => $fp_hash, 'stable_hash' => $stable_hash, 'payload' => $raw,
@@ -95,90 +127,48 @@ try {
 	$q->bindValue(':ip', $ip);
 	$q->bindValue(':since', $now - 3600, PDO::PARAM_INT);
 	$q->execute();
-	if ((int)$q->fetchColumn() >= 60) {
-		http_response_code(204);
-		exit;
-	}
+	$flooded = (int)$q->fetchColumn() >= 60;
 
 	// Addresses are cheap to rotate (IPv6), so new rows are also capped site-wide.
 	// shortcut: fixed 1000/hour for all visitors together; raise it if a busy site loses real data.
 	$q = query("SELECT `first_seen` FROM ``imgboard_fp`` ORDER BY `id` DESC LIMIT 1 OFFSET 999");
-	$flooded = $q && (int)$q->fetchColumn() > $now - 3600;
+	$flooded = $flooded || ($q && (int)$q->fetchColumn() > $now - 3600);
 
-	// Is this page load from a logged-in staff member? If so, still record the sighting
-	// (so admins can view it at ?/fp/<hash>), but also stamp the staff member's
-	// identifiers into imgboard_staff_fp so they are excluded from the user fingerprint
-	// list / .zip / .txt - including staff who only lurk and never post. Validate the mod
-	// cookie directly (mkhash); check_login() has side effects (destroyCookies/exit)
-	// unsuitable for this silent sink.
-	$is_staff = false;
-	$base = $config['cookies']['mod'];
-	foreach ([$base, '__Secure-' . $base, '__Host-' . $base] as $cn) {
-		if (empty($_COOKIE[$cn])) { continue; }
-		$parts = explode(':', $_COOKIE[$cn]);
-		if (count($parts) !== 3) { continue; }
-		$mq = prepare("SELECT `password` FROM ``mods`` WHERE `username` = :u");
-		$mq->bindValue(':u', $parts[0]);
-		if ($mq->execute() && ($mu = $mq->fetch(PDO::FETCH_ASSOC)) && $parts[1] === mkhash($parts[0], $mu['password'], $parts[2])) {
-			$is_staff = true;
-			break;
-		}
-	}
-
-	$q = prepare("INSERT INTO ``imgboard_fp``
-		(`fp_hash`, `stable_hash`, `cookie_id`, `hwid`, `ip`, `trust`, `lies`, `components`, `user_agent`, `first_seen`, `last_seen`, `hits`)
-		VALUES (:fp, :stable, :cookie, :hwid, :ip, :trust, :lies, :components, :ua, :now, :now, 1)
-		ON DUPLICATE KEY UPDATE
-			`fp_hash` = :fp2,
-			`hwid` = :hwid2,
-			`trust` = :trust2,
-			`lies` = :lies2,
-			`components` = :components2,
-			`user_agent` = :ua2,
-			`last_seen` = :now2,
-			`hits` = `hits` + 1");
-	$q->bindValue(':fp', $fp_hash);
-	$q->bindValue(':stable', $stable_hash);
-	$q->bindValue(':cookie', $cookie_id);
-	$q->bindValue(':hwid', $hwid);
-	$q->bindValue(':ip', $ip);
-	$q->bindValue(':trust', $trust, $trust === null ? PDO::PARAM_NULL : PDO::PARAM_INT);
-	$q->bindValue(':lies', $lies);
-	$q->bindValue(':components', $components);
-	$q->bindValue(':ua', $ua);
-	$q->bindValue(':now', $now, PDO::PARAM_INT);
-	$q->bindValue(':fp2', $fp_hash);
-	$q->bindValue(':hwid2', $hwid);
-	$q->bindValue(':trust2', $trust, $trust === null ? PDO::PARAM_NULL : PDO::PARAM_INT);
-	$q->bindValue(':lies2', $lies);
-	$q->bindValue(':components2', $components);
-	$q->bindValue(':ua2', $ua);
-	$q->bindValue(':now2', $now, PDO::PARAM_INT);
 	if (!$flooded) {
-		$q->execute(); // the ban check below still runs while capped
+		$q = prepare("INSERT INTO ``imgboard_fp``
+			(`fp_hash`, `stable_hash`, `cookie_id`, `hwid`, `ip`, `trust`, `lies`, `components`, `user_agent`, `first_seen`, `last_seen`, `hits`)
+			VALUES (:fp, :stable, :cookie, :hwid, :ip, :trust, :lies, :components, :ua, :now, :now, 1)
+			ON DUPLICATE KEY UPDATE
+				`fp_hash` = :fp2,
+				`hwid` = :hwid2,
+				`trust` = :trust2,
+				`lies` = :lies2,
+				`components` = :components2,
+				`user_agent` = :ua2,
+				`last_seen` = :now2,
+				`hits` = `hits` + 1");
+		$q->bindValue(':fp', $fp_hash);
+		$q->bindValue(':stable', $stable_hash);
+		$q->bindValue(':cookie', $cookie_id);
+		$q->bindValue(':hwid', $hwid);
+		$q->bindValue(':ip', $ip);
+		$q->bindValue(':trust', $trust, $trust === null ? PDO::PARAM_NULL : PDO::PARAM_INT);
+		$q->bindValue(':lies', $lies);
+		$q->bindValue(':components', $components);
+		$q->bindValue(':ua', $ua);
+		$q->bindValue(':now', $now, PDO::PARAM_INT);
+		$q->bindValue(':fp2', $fp_hash);
+		$q->bindValue(':hwid2', $hwid);
+		$q->bindValue(':trust2', $trust, $trust === null ? PDO::PARAM_NULL : PDO::PARAM_INT);
+		$q->bindValue(':lies2', $lies);
+		$q->bindValue(':components2', $components);
+		$q->bindValue(':ua2', $ua);
+		$q->bindValue(':now2', $now, PDO::PARAM_INT);
+		$q->execute();
 	}
 
-	// Entry ban check: boards are static HTML, so this is the only server round-trip
-	// on a plain page view. If this (non-staff) visitor is under an IP/range ban or a
-	// fingerprint ban, tell the client to show banned.php. Best-effort: a visitor with
-	// JS off can still view, but checkBan() still hard-blocks their posting.
-	if (!$is_staff) {
-		$banned = false;
-		if (class_exists('Bans')) {
-			foreach (Bans::find($ip, false, false, null, false) as $b) {
-				if (empty($b['expires']) || (int)$b['expires'] >= $now) { $banned = true; break; }
-			}
-		}
-		if (!$banned && function_exists('imgboard_fp_ban_match')) {
-			$banned = imgboard_fp_ban_match($fp_hash, $cookie_id !== '' ? $cookie_id : null) !== null;
-		}
-		if ($banned) {
-			header('Content-Type: application/json');
-			echo json_encode([ 'banned' => 1, 'url' => '/banned.php' ]);
-			exit;
-		}
-	}
-
+	// Staff identifiers are recorded so they can be left out of the user fingerprint
+	// list / .zip / .txt - including staff who only lurk and never post.
 	if ($is_staff) {
 		imgboard_ddl_once("CREATE TABLE IF NOT EXISTS ``imgboard_staff_fp`` (
 			`stable_hash` varchar(32) CHARACTER SET ascii NOT NULL DEFAULT '',
@@ -197,8 +187,15 @@ try {
 		$s->bindValue(':t2', $now, PDO::PARAM_INT);
 		$s->execute();
 	}
-} catch (Exception $e) {
+
+	if (mt_rand(1, 200) === 1) imgboard_fp_prune();
+} catch (\Throwable $e) {
 	// Never leak anything to an unauthenticated poster.
 }
 
+if ($banned) {
+	header('Content-Type: application/json');
+	echo json_encode([ 'banned' => 1, 'url' => '/banned.php' ]);
+	exit;
+}
 http_response_code(204);

@@ -120,6 +120,32 @@ function secure_admin_account(): ?string {
 	return $password;
 }
 
+// Whether to treat this request's cookies as HTTPS-only. Behind the Cloudflare tunnel TLS
+// ends at the edge, so the forwarded protocol counts. A client forging that header only
+// changes which cookie it gets itself. (Whether plain-http LOGIN is allowed at all is the
+// separate secure_login_only setting.)
+function imgboard_https(): bool {
+	return Net\is_connection_secure(true);
+}
+
+// Does the request carry a staff cookie under any of its names? Says nothing about validity.
+function imgboard_has_staff_cookie(): bool {
+	global $config;
+	$base = $config['cookies']['mod'];
+	return isset($_COOKIE[$base]) || isset($_COOKIE["__Host-$base"]) || isset($_COOKIE["__Secure-$base"]);
+}
+
+// The one test of a staff session [username, hash, salt] against its mods row: not
+// expired, not issued before this account's last logout, and the hash matches.
+function imgboard_session_valid(array $cookie, $user): bool {
+	global $config;
+	if (count($cookie) !== 3 || !$user) return false;
+	$issued = imgboard_cookie_issued($cookie[2]);
+	return $issued > time() - $config['cookies']['expire']
+		&& $issued > (int)imgboard_setting_get('logout_' . $user['id'], '0')
+		&& hash_equals(mkhash($cookie[0], $user['password'], $cookie[2]), $cookie[1]);
+}
+
 function calc_cookie_name(bool $is_https, bool $is_path_jailed, string $base_name): string {
 	if ($is_https) {
 		if ($is_path_jailed) {
@@ -178,7 +204,7 @@ function setCookies(): void {
 		error('setCookies() was called for a non-moderator!');
 	}
 
-	$is_https = Net\is_connection_secure($config['cookies']['secure_login_only'] === 1);
+	$is_https = imgboard_https();
 	$is_path_jailed = $config['cookies']['jail'];
 	$name = calc_cookie_name($is_https, $is_path_jailed, $config['cookies']['mod']);
 
@@ -311,7 +337,7 @@ function make_secure_link_token(string $uri): string {
 function check_login(Context $ctx, bool $prompt = false): void {
 	global $config, $mod;
 
-	$is_https = Net\is_connection_secure($config['cookies']['secure_login_only'] === 1);
+	$is_https = imgboard_https();
 	$is_path_jailed = $config['cookies']['jail'];
 	$expected_cookie_name = calc_cookie_name($is_https, $is_path_jailed, $config['cookies']['mod']);
 
@@ -334,11 +360,7 @@ function check_login(Context $ctx, bool $prompt = false): void {
 		$user = $query->fetch(PDO::FETCH_ASSOC);
 
 		// Reject expired cookies, cookies issued before this account's last logout, and bad hashes.
-		$issued = imgboard_cookie_issued($cookie[2]);
-		if (!$user
-				|| $issued <= time() - $config['cookies']['expire']
-				|| $issued <= (int)imgboard_setting_get('logout_' . $user['id'], '0')
-				|| !hash_equals(mkhash($cookie[0], $user['password'], $cookie[2]), $cookie[1])) {
+		if (!imgboard_session_valid($cookie, $user)) {
 			// Malformed cookies
 			destroyCookies();
 			if ($prompt) {

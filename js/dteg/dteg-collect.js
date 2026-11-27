@@ -638,8 +638,10 @@
 				var ct = res.headers.get('content-type') || '';
 				if (ct.indexOf('application/json') === -1) { return; }
 				return res.json().then(function (j) {
-					if (j && j.banned && j.url && location.pathname !== '/banned.php') {
-						location.replace(j.url);
+					if (j && j.banned && j.url) {
+						// forget "already sent" (on the ban page too), so the next page view is checked again
+						try { sessionStorage.removeItem('imgboard_fp_sent'); } catch (e) {}
+						if (location.pathname !== '/banned.php') { location.replace(j.url); }
 					}
 				});
 			})['catch'](function () {});

@@ -384,13 +384,17 @@ class Bans {
 		}
 
 		query("DELETE FROM ``bans`` WHERE `id` = " . (int)$ban_id) or error(db_error());
+		if (function_exists('imgboard_fp_ban_delete')) imgboard_fp_ban_delete((int)$ban_id);
 
 		if (!$dont_rebuild) Vichan\Functions\Theme\rebuild_themes('bans');
 
 		return true;
 	}
 
-	static public function new_ban($cloaked_mask, $reason, $length = false, $ban_board = false, $mod_id = false, $post = false) {
+	// $identity (a post row: cookie_id, fp_hash, ip) names the offender, so that the ban
+	// can follow them to another address. Pass it only when it is known to be theirs.
+	// Returns the new ban's id.
+	static public function new_ban($cloaked_mask, $reason, $length = false, $ban_board = false, $mod_id = false, $post = false, $identity = false) {
 		$mask = uncloak_mask($cloaked_mask);
 
 		global $mod, $pdo, $board;
@@ -456,29 +460,22 @@ class Bans {
 
 		$query->execute() or error(db_error($query));
 
-		// Imgboard: also fingerprint-ban so the ban follows the poster across IP changes.
-		// From the banned post's fp when present, and from every fingerprint seen at the
-		// IP for a bare single-IP ban - so every ban becomes a fingerprint ban wherever a
-		// fingerprint is knowable (a CIDR/wildcard range has no single fingerprint).
-		$fp_expires = (is_int($length) && $length > time()) ? $length : null;
-		$fp_by = isset($mod['username']) ? $mod['username'] : null;
-		if (!$ban_board && $post && function_exists('imgboard_fp_ban_capture_from_post')) {
-			imgboard_fp_ban_capture_from_post($post, $reason !== '' ? $reason : null, $fp_expires, $fp_by);
-		}
-		if (!$ban_board && function_exists('imgboard_fp_ban_capture_from_ip') && filter_var($mask, FILTER_VALIDATE_IP) !== false) {
-			imgboard_fp_ban_capture_from_ip($mask, $reason !== '' ? $reason : null, $fp_expires, $fp_by);
+		$ban_id = (int)$pdo->lastInsertId(); // before anything else inserts a row
+
+		// Imgboard: fingerprint links, so the ban follows the offender across IP changes.
+		if ($identity && function_exists('imgboard_fp_ban_capture')) {
+			imgboard_fp_ban_capture($ban_id, $identity);
 		}
 
 		$ban_len = $length > 0 ? preg_replace('/^(\d+) (\w+?)s?$/', '$1-$2', Format\until($length)) : 'permanent';
 		$ban_board = $ban_board ? "/$ban_board/" : 'all boards';
 		$ban_ip = filter_var($mask, FILTER_VALIDATE_IP) !== false ? "<a href=\"?/IP/$cloaked_mask\">$cloaked_mask</a>" : $cloaked_mask;
-		$ban_id = $pdo->lastInsertId();
 		$ban_reason = $reason ? 'reason: ' . utf8tohtml($reason) : 'no reason';
 
 		modLog("Created a new $ban_len ban on $ban_board for $ban_ip (<small># $ban_id </small>) with $ban_reason");
 
 		Vichan\Functions\Theme\rebuild_themes('bans');
 
-		return $pdo->lastInsertId();
+		return $ban_id;
 	}
 }

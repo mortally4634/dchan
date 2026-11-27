@@ -91,6 +91,18 @@ then `tools/imgboard-rebuild.php`. Expect:
   device IDs change, and older posts can no longer be deleted with their password.
 - The config editor, themes and raw HTML are now Root only.
 
+## Upgrading to 1.2.2
+
+1. Check `.env`: the four password lines must be non-empty (the stack now refuses to start
+   otherwise). If yours still uses the old example passwords, change them; for an existing
+   database change the MySQL user's password inside MySQL as well. New optional lines are
+   listed in `.env.example`.
+2. `docker compose up -d --build`, then `docker compose restart web` (new nginx rules), then
+   `tools/imgboard-rebuild.php` (so browsers fetch the new scripts).
+3. Optionally run `tools/fpban-backfill.php` once. Fingerprint bans made by earlier versions
+   are no longer read; this rebuilds them for active bans that saved their post.
+4. Staff on https are asked to log in once more.
+
 ## Upgrading to 1.2.1
 
 Run `docker compose up -d --build`, then `tools/imgboard-rebuild.php`. Posts already published
@@ -150,7 +162,10 @@ New sensitive features should pick an explicit level in `inc/instance-config.php
 - Both halves live in one `/pending` queue with CSRF-protected approve actions.
 - **Post Pending Approval (PPA)**: optionally hold non-staff posts for review, switchable per board from the Pending page.
   Posts via the Tor and I2P mirrors are held by default.
-- **Blocklists**: blocked words and links; Janitors suggest, Mods approve or delete.
+- **Blocklists**: blocked words and links; Janitors suggest, Mods approve or delete. Matching
+  refuses posts generously (words split by spaces or punctuation count); the automatic 24-hour
+  ban applies only to a plain match: the word as written or spelled letter by letter, or the
+  blocked name as a whole name in a link.
 - **Mediator proposals**: Mediators propose a deletion or ban, Janitors+ approve or deny.
 
 ### Moderation and visibility
@@ -158,6 +173,11 @@ New sensitive features should pick an explicit level in `inc/instance-config.php
   opaque poster number, Mods the IP and device identifiers, Admins the full fingerprint breakdown.
 - DTEG browser fingerprinting (`js/dteg/`: device and headless checks, WebRTC IP discovery, extension detection, input-cadence timing without keystroke content) with a trust score, an append-only history of every report and its request headers (also recorded for each post, with or without JavaScript), a per-visitor list and bulk export
   (Manager+ only), plus VPN/proxy detection (proxycheck.io) beside the IP.
+- **Fingerprint bans** (`?/fp-bans`, Mod+): a ban on a post (or an automatic ban) also holds
+  that browser's cookie anywhere, and its device fingerprint on the same /24 or /64 network,
+  until the ban ends. Typed address and range bans stay address-only. Turn device matching off
+  with `$config['imgboard_fp_ban_device']`. Both identifiers come from the visitor's browser,
+  so this slows evaders down; it cannot stop a determined one.
 - File-hash bans, steganography check on images, per-board IP post deletion.
 - Admin-editable mod log, drag-to-reorder top bar editor, mod-mode overboard (`?/o`).
 - "View as <role>" preview with a persistent banner.
@@ -167,7 +187,9 @@ New sensitive features should pick an explicit level in `inc/instance-config.php
   to both `j|test` regexes in `docker/nginx/vichan.conf` (the static-file gate), then create
   the board in the mod panel.
 - Per-board anonymous-name settings and an admin-managed random name list.
-- Login throttling per username and per IPv6 /64.
+- Login throttling per username and per address (IPv6 /64), counted before the password is
+  checked; Tor/I2P logins are limited per username. At most 100 mirror posts wait for approval
+  at once.
 
 ### Emergency controls
 - **JSID** (permanent, Root only) and **Temp-JSID** (temporary, any admin) killswitch with
@@ -213,7 +235,7 @@ Built on the work of:
 - **Tinyboard** 0.9.6 — Copyright © 2010-2014 Tinyboard Development Group.
   <https://github.com/savetheinternet/Tinyboard>
 - **vichan** — Copyright © 2012-2025 vichan-devel. <https://github.com/vichan-devel/vichan>
-- **dchan** 1.2.1 — this fork. <https://github.com/mortally4634/dchan>
+- **dchan** 1.2.2 — this fork. <https://github.com/mortally4634/dchan>
 
 Licenses: [LICENSE.md](LICENSE.md) covers dchan; [LICENSE.Tinyboard.md](LICENSE.Tinyboard.md) covers the
 Tinyboard and vichan code this fork is built on.

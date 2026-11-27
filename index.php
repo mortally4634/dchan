@@ -15,7 +15,7 @@ require_once 'inc/imgboard-home.php';
 // Detect a logged-in mod/admin (so the page can show the mod bar + edit links).
 $ctx = Vichan\build_context($config);
 $mod = false;
-if (isset($_COOKIE[$config['cookies']['mod']])) {
+if (imgboard_has_staff_cookie()) {
 	check_login($ctx, false);
 }
 

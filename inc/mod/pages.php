@@ -60,38 +60,36 @@ function mod_login(Context $ctx, $redirect = false) {
 	if ($secure_login_mode !== 0 && !Net\is_connection_secure($secure_login_mode === 1)) {
 		$args['error'] = $config['error']['insecure'];
 	} elseif (isset($_POST['login'])) {
-		// Imgboard: brute-force throttle - lock an IP out after too many
-		// failed logins in a window (keyed on the real client IP).
-		$login_ip = function_exists('imgboard_login_ip_key') ? imgboard_login_ip_key($_SERVER['REMOTE_ADDR'] ?? '') : ($_SERVER['REMOTE_ADDR'] ?? '');
-		$login_user = function_exists('imgboard_login_user_key') && isset($_POST['username']) && is_string($_POST['username']) ? imgboard_login_user_key($_POST['username']) : '';
-		// A known browser skips the per-username lock (the per-address one still applies).
-		if ($login_user !== '' && is_string($_COOKIE['imgboard_known'] ?? null)
-				&& hash_equals(imgboard_known_device($_POST['username']), $_COOKIE['imgboard_known'])) {
-			$login_user = '';
-		}
-		$locked = function_exists('imgboard_login_locked_for') ? max(imgboard_login_locked_for($login_ip), $login_user !== '' ? imgboard_login_locked_for($login_user) : 0) : 0;
-		// Check if inputs are set and not empty
-		if ($locked > 0) {
-			$args['error'] = 'Too many failed login attempts. Try again in ' . ceil($locked / 60) . ' minute(s).';
-		} elseif (!isset($_POST['username'], $_POST['password']) || $_POST['username'] == '' || $_POST['password'] == '') {
+		$username = $_POST['username'] ?? null;
+		$password = $_POST['password'] ?? null;
+		$login_keys = [];
+		$allowed = true;
+		if (!is_string($username) || !is_string($password) || $username === '' || $password === '') {
 			$args['error'] = $config['error']['invalid'];
-		}
-		elseif (strlen($_POST['password']) > 128 || strlen($_POST['username']) > 128) {
-            $args['error'] = $config['error']['infotoolong'];
-		} elseif (!login($_POST['username'], $_POST['password'])) {
-			if (function_exists('imgboard_login_record_fail')) {
-				imgboard_login_record_fail($login_ip);
-				if ($login_user !== '') imgboard_login_record_fail($login_user, IMGBOARD_LOGIN_USER_MAX_FAILS);
+		} elseif (strlen($password) > 128 || strlen($username) > 128) {
+			$args['error'] = $config['error']['infotoolong'];
+		} else {
+			// Brute-force throttle: count this attempt BEFORE checking the password.
+			$known = is_string($_COOKIE['imgboard_known'] ?? null)
+				&& hash_equals(imgboard_known_device($username), $_COOKIE['imgboard_known']);
+			$login_keys = imgboard_login_keys((string)($_SERVER['REMOTE_ADDR'] ?? ''), $username, $known);
+			foreach ($login_keys as $key => $max) {
+				// stop at the first refusal, so a locked address cannot go on to lock the username
+				if (!imgboard_login_attempt($key, $max)) { $allowed = false; break; }
 			}
+		}
+
+		if (isset($args['error'])) {
+			// rejected above
+		} elseif (!$allowed) {
+			$args['error'] = 'Too many failed login attempts. Try again in ' . ceil(IMGBOARD_LOGIN_LOCKOUT / 60) . ' minutes.';
+		} elseif (!login($username, $password)) {
 			if ($config['syslog'])
 				_syslog(LOG_WARNING, 'Unauthorized login attempt!');
 
 			$args['error'] = $config['error']['invalid'];
 		} else {
-			if (function_exists('imgboard_login_clear')) {
-				imgboard_login_clear($login_ip);
-				if ($login_user !== '') imgboard_login_clear($login_user);
-			}
+			foreach ($login_keys as $key => $max) imgboard_login_clear($key);
 			modLog('Logged in');
 
 			// Login successful
@@ -100,7 +98,7 @@ function mod_login(Context $ctx, $redirect = false) {
 			setcookie('imgboard_known', imgboard_known_device($_POST['username']), [
 				'expires'  => time() + 60 * 60 * 24 * 365,
 				'path'     => '/',
-				'secure'   => Net\is_connection_secure($config['cookies']['secure_login_only'] === 1),
+				'secure'   => imgboard_https(),
 				'httponly' => true,
 				'samesite' => 'Strict',
 			]);
@@ -1121,7 +1119,8 @@ function mod_edit_ban(Context $ctx, $ban_id) {
 		}
 
 		imgboard_require_ban_scope($new_ban['board']);
-		Bans::new_ban($new_ban['mask'], $new_ban['reason'], $new_ban['length'], $new_ban['board'], false, $new_ban['post']);
+		$new_id = Bans::new_ban($new_ban['mask'], $new_ban['reason'], $new_ban['length'], $new_ban['board'], false, $new_ban['post']);
+		if (function_exists('imgboard_fp_ban_move')) imgboard_fp_ban_move((int)$ban_id, $new_id);
 		Bans::delete($ban_id);
 
 		header('Location: ?/dashboard', true, $config['redirect_http']);
@@ -1730,7 +1729,7 @@ function mod_ban_post(Context $ctx, $board, $delete, $post, $token = false) {
 
 	$security_token = make_secure_link_token($board . '/ban/' . $post);
 
-	$query = prepare(sprintf('SELECT ' . ($config['ban_show_post'] ? '*' : '`ip`, `thread`') .
+	$query = prepare(sprintf('SELECT ' . ($config['ban_show_post'] ? '*' : '`ip`, `thread`, `cookie_id`, `fp_hash`') .
 		' FROM ``posts_%s`` WHERE `id` = :id', $board));
 	$query->bindValue(':id', $post);
 	$query->execute() or error(db_error($query));
@@ -1753,7 +1752,7 @@ function mod_ban_post(Context $ctx, $board, $delete, $post, $token = false) {
 
 		imgboard_require_ban_scope($_POST['board'] == '*' ? false : $_POST['board']);
 		Bans::new_ban($ip, $_POST['reason'], $_POST['length'], $_POST['board'] == '*' ? false : $_POST['board'],
-			false, $config['ban_show_post'] ? $_post : false);
+			false, $config['ban_show_post'] ? $_post : false, $_post);
 
 		if (isset($_POST['public_message'], $_POST['message'])) {
 			// public ban message

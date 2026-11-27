@@ -1179,7 +1179,7 @@ function mod_modreq_approve(Context $ctx, $id) {
 			// Site-wide only if the approver is assigned every board.
 			$scope = hasPermission($config['mod']['ban'], '*') ? false : $req['board'];
 			Bans::new_ban($post['ip'], $req['reason'], $length, $scope, false,
-				$config['ban_show_post'] ? $post : false);
+				$config['ban_show_post'] ? $post : false, $post);
 			modLog("Approved " . ($scope ? 'board' : 'site-wide') . " ban of post #{$req['post_id']} (proposed by {$req['requested_by']})", $req['board']);
 		}
 	}
@@ -1686,7 +1686,7 @@ function imgboard_render_news_page(bool $as_mod = false) {
 	} else {
 		$ctx = Vichan\build_context($config);
 		$mod = false;
-		if (isset($_COOKIE[$config['cookies']['mod']])) {
+		if (imgboard_has_staff_cookie()) {
 			check_login($ctx, false);
 		}
 		$show_mod = false;
@@ -1730,7 +1730,7 @@ function imgboard_render_content_page(string $key, string $title, string $defaul
 		$ctx = Vichan\build_context($config);
 		$mod = false;
 		// Soft login check so we can show the Edit link to admins (needs jail=false).
-		if (isset($_COOKIE[$config['cookies']['mod']])) {
+		if (imgboard_has_staff_cookie()) {
 			check_login($ctx, false);
 		}
 		$show_mod = false;
@@ -2591,32 +2591,50 @@ function imgboard_word_canon(string $s): array {
 	return [$stripped, $squeezed];
 }
 
+// Only the text a writer spelled out one character at a time ("b a d", "b.a.d"), each run
+// joined; whole words are never glued together. Runs are separated by newlines.
+function imgboard_spelled_out(string $s): string {
+	$runs = [''];
+	foreach (preg_split('/[^\p{L}\p{N}]+/u', $s, -1, PREG_SPLIT_NO_EMPTY) ?: [] as $token) {
+		if (mb_strlen($token) === 1) { $runs[count($runs) - 1] .= $token; }
+		elseif (end($runs) !== '') { $runs[] = ''; }
+	}
+	return implode("\n", $runs);
+}
+
 // Pure core: does the body contain an active blocked word or link? Returns the error
-// to show, else null. Words match on the stripped body OR the squeezed body (see
-// imgboard_word_canon); a squeezed word under 2 chars is skipped so it can't match
-// everything. Links are matched canonically (imgboard_link_canon) against every link
-// imgboard_detect_links() finds plus the whole-body canon, so scheme-less / obfuscated
-// forms still hit. Takes the lists explicitly so it is unit-testable without the DB.
-function imgboard_blocklist_match_core(string $body_nomarkup, array $words, array $links): ?string {
+// to show, else null. Takes the lists explicitly so it is unit-testable without the DB.
+//   Default (what gets REJECTED, over-blocks on purpose): words match on the stripped body
+//   or with all spacing/punctuation removed (imgboard_word_canon); links match anywhere in
+//   a detected link or in the whole body canon (imgboard_link_canon).
+//   $strict (what is clear enough to AUTO-BAN): words must appear as written or be spelled
+//   out letter by letter; a blocked link must be a whole name inside a detected link, so
+//   blocking "t.co" never bans someone for "reddit.com".
+function imgboard_blocklist_match_core(string $body_nomarkup, array $words, array $links, bool $strict = false): ?string {
 	list($body_stripped, $body_squeezed) = imgboard_word_canon($body_nomarkup);
+	$joined = $strict ? imgboard_spelled_out($body_stripped) : $body_squeezed;
 	foreach ($words as $w) {
 		if ($w === '') continue;
 		list($ws, $wsq) = imgboard_word_canon((string)$w);
 		if ($ws !== '' && mb_stripos($body_stripped, $ws) !== false) {
 			return 'Your post contains a blocked word.';
 		}
-		if (strlen($wsq) >= 2 && $body_squeezed !== '' && strpos($body_squeezed, $wsq) !== false) {
+		// a squeezed word under 2 characters would match everything
+		if (strlen($wsq) >= 2 && strpos($joined, $wsq) !== false) {
 			return 'Your post contains a blocked word.';
 		}
 	}
 	if ($links) {
-		$candidates = [imgboard_link_canon($body_nomarkup)];
+		$candidates = $strict ? [] : [imgboard_link_canon($body_nomarkup)];
 		foreach (imgboard_detect_links($body_nomarkup) as $u) { $candidates[] = imgboard_link_canon($u); }
 		foreach ($links as $l) {
 			$lc = imgboard_link_canon((string)$l);
 			if ($lc === '') continue;
 			foreach ($candidates as $c) {
-				if ($c !== '' && mb_strpos($c, $lc) !== false) {
+				$hit = $strict
+					? preg_match('~(?:^|[./@])' . preg_quote($lc, '~') . '(?:$|[/?#:])~u', $c) === 1
+					: ($c !== '' && mb_strpos($c, $lc) !== false);
+				if ($hit) {
 					return 'Your post contains a blocked link.';
 				}
 			}
@@ -2626,32 +2644,36 @@ function imgboard_blocklist_match_core(string $body_nomarkup, array $words, arra
 }
 
 // The same check over everything a post shows: body, subject, name, email, embed, poll, filenames.
-function imgboard_blocklist_match_post(array $post): ?string {
+function imgboard_blocklist_match_post(array $post, bool $strict = false): ?string {
 	$parts = array_merge([(string)($post['body_nomarkup'] ?? ''), (string)($post['embed'] ?? '')], imgboard_post_text_parts($post));
 	foreach (array_filter($parts, 'strlen') as $part) {
-		if (($error = imgboard_blocklist_match($part)) !== null) return $error;
+		if (($error = imgboard_blocklist_match($part, $strict)) !== null) return $error;
 	}
 	return null;
 }
 
 // Return the error to show if the post body contains an active blocked word or link,
 // else null. Thin wrapper over imgboard_blocklist_match_core with the cached lists.
-function imgboard_blocklist_match(string $body_nomarkup): ?string {
+function imgboard_blocklist_match(string $body_nomarkup, bool $strict = false): ?string {
 	return imgboard_blocklist_match_core(
 		$body_nomarkup,
 		imgboard_blocklist_cached('words'),
-		imgboard_blocklist_cached('links')
+		imgboard_blocklist_cached('links'),
+		$strict
 	);
 }
 
-// Auto-ban (24h, site-wide) a poster whose post was refused for a blocked word/link. They
+// Auto-ban (24h, site-wide) a poster whose post plainly contained a blocked word/link. They
 // then see the ban screen and can appeal (if ban appeals are enabled). Called from post.php.
 // A currently-banned user can't post, so this never stacks bans on itself.
 // shortcut: fixed 24h site-wide; make the length/scope configurable if staff want.
 function imgboard_blocklist_autoban(string $ip, string $why): void {
 	if ($ip === '' || !class_exists('Bans')) return;
 	try {
-		Bans::new_ban($ip, 'Automatic ban: ' . $why, '24h', false /* site-wide */, -1 /* system */, false);
+		// the request being refused IS the offender, so their identifiers are exact
+		list($cookie_id, $device) = imgboard_visitor_ids($_COOKIE);
+		Bans::new_ban($ip, 'Automatic ban: ' . $why, '24h', false /* site-wide */, -1 /* system */, false,
+			[ 'cookie_id' => $cookie_id, 'fp_hash' => $device, 'ip' => $ip ]);
 		if (function_exists('modLog')) { modLog('Auto-banned (24h) a poster for a blocked word/link', false); }
 	} catch (\Throwable $e) { /* never block the error response on a ban failure */ }
 }
@@ -2664,10 +2686,32 @@ function imgboard_blocklist_autoban(string $ip, string $why): void {
  *  collector's whole payload and every request header, from page loads (fp.php) and
  *  from posts (post.php, which also covers visitors without JavaScript).
  * ----------------------------------------------------------------------- */
-// shortcut: fixed caps on page-load records and no automatic pruning; raise the caps for
-// a busy site, and prune old rows by `time` if the database grows too large.
+// shortcut: fixed caps on page-load records; only the newest are kept, which bounds the disk
+// a stranger can fill to a few GB. Raise the KEEP numbers for a busy site with more disk.
 const IMGBOARD_FP_LOG_IP_PER_HOUR   = 120;
 const IMGBOARD_FP_LOG_SITE_PER_HOUR = 5000;
+const IMGBOARD_FP_MAX_BYTES         = 262144; // largest page-visit report accepted (256 KiB)
+const IMGBOARD_FP_LOG_KEEP          = 10000;  // page-visit history rows kept
+const IMGBOARD_FP_KEEP              = 20000;  // per-visitor summary rows kept
+
+// Delete the oldest page-visit data beyond the caps. History written by actual posts is
+// never touched. Works in batches so one request never does a huge delete.
+function imgboard_fp_prune(int $keep_log = IMGBOARD_FP_LOG_KEEP, int $keep_fp = IMGBOARD_FP_KEEP): void {
+	try {
+		imgboard_fp_log_table();
+		foreach ([
+			[ '``imgboard_fp_log``', "WHERE `source` = 'fp'", '`id`', $keep_log ],
+			[ '``imgboard_fp``', '', '`last_seen`, `id`', $keep_fp ],
+		] as list($table, $where, $order, $keep)) {
+			$count = query("SELECT COUNT(*) FROM $table $where");
+			if (!$count) continue;
+			$excess = min(5000, (int)$count->fetchColumn() - $keep);
+			if ($excess > 0) query("DELETE FROM $table $where ORDER BY $order LIMIT " . (int)$excess);
+		}
+	} catch (\Throwable $e) {
+		error_log('fingerprint pruning failed: ' . $e->getMessage());
+	}
+}
 
 function imgboard_fp_log_table(): string {
 	imgboard_ddl_once("CREATE TABLE IF NOT EXISTS ``imgboard_fp_log`` (
@@ -2762,137 +2806,199 @@ function imgboard_fp_history(string $hash, int $limit): array {
 /* ----------------------------------------------------------------------- *
  *  Fingerprint bans
  *
- *  A parallel ban record keyed on a visitor's DTEG fingerprint (fp_hash) and
- *  per-visitor cookie (cookie_id), so a ban follows an evader across IP changes.
- *  Captured automatically whenever a ban is placed on a post (Bans::new_ban),
- *  enforced in checkBan() (posting + the banned.php entry page) and surfaced to
- *  the client by fp.php for the static-page redirect. hwid is stored for staff
- *  reference but never matched on - it is derived from UA+language+encoding and
- *  collides across everyone on the same browser/OS, which would ban strangers.
- *  Managed (list + undo) at ?/fp-bans.
+ *  Identifiers attached to an ordinary ban, so it follows the person to a new
+ *  address. A link holds no reason or expiry of its own: it only points at a row in
+ *  `bans`, so unbanning, appeals, edits and expiry apply to it automatically.
+ *
+ *  Two kinds of link:
+ *    cookie  the random per-browser id (imgboard_uid). Unique to one browser, so it
+ *            matches from anywhere.
+ *    device  the browser fingerprint (imgboard_fp, DTEG's "stable" hash) TOGETHER
+ *            WITH the network it was seen on. Identical phones share a fingerprint,
+ *            so it never matches outside that /24 (IPv4) or /64 (IPv6), and never on
+ *            private or Tor/I2P addresses. It catches someone who cleared cookies.
+ *  Identifiers come only from the offender: the banned post, the refused request,
+ *  and later requests that match by cookie. Never from "whoever shares an address".
+ *  Both are sent by the visitor's browser, so a determined evader who changes
+ *  both (or changes network and clears cookies) gets past; the IP ban still applies.
+ *  Managed at ?/fp-bans. (The old `imgboard_fp_bans` table is no longer read.)
  * ----------------------------------------------------------------------- */
-function imgboard_fp_ban_table(): string {
-	imgboard_ddl_once("CREATE TABLE IF NOT EXISTS ``imgboard_fp_bans`` (
-		`id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-		`fp_hash` varchar(32) CHARACTER SET ascii NOT NULL DEFAULT '',
-		`cookie_id` varchar(64) CHARACTER SET ascii NOT NULL DEFAULT '',
-		`hwid` varchar(32) CHARACTER SET ascii NOT NULL DEFAULT '',
-		`reason` varchar(600) DEFAULT NULL,
-		`expires` int(11) DEFAULT NULL,
+const IMGBOARD_FP_BAN_DEVICE_MAX = 20; // device links one ban can learn
+
+function imgboard_fp_ban_ids_table(): string {
+	imgboard_ddl_once("CREATE TABLE IF NOT EXISTS ``imgboard_fp_ban_ids`` (
+		`ban_id` int(10) unsigned NOT NULL,
+		`cookie_id` varchar(32) CHARACTER SET ascii NOT NULL DEFAULT '',
+		`device` varchar(32) CHARACTER SET ascii NOT NULL DEFAULT '',
+		`net` varchar(49) CHARACTER SET ascii NOT NULL DEFAULT '',
 		`time` int(11) NOT NULL,
-		`by` varchar(64) DEFAULT NULL,
-		PRIMARY KEY (`id`),
-		KEY `k_fp` (`fp_hash`),
-		KEY `k_cookie` (`cookie_id`)
+		PRIMARY KEY (`ban_id`,`cookie_id`,`device`,`net`),
+		KEY `k_cookie` (`cookie_id`),
+		KEY `k_device` (`device`,`net`)
 	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-	return 'imgboard_fp_bans';
+	return 'imgboard_fp_ban_ids';
 }
 
-// Pure predicate: does a stored fp-ban row match this visitor? Matches on fp_hash
-// or cookie_id only (never hwid), ignores empty identifiers, and treats a null
-// `expires` as permanent. Kept separate so it is unit-testable without the DB.
-function imgboard_fp_ban_row_matches(array $row, ?string $fp_hash, ?string $cookie_id, int $now): bool {
-	if (isset($row['expires']) && $row['expires'] !== null && (int)$row['expires'] < $now) return false;
-	if ($fp_hash !== null && $fp_hash !== '' && !empty($row['fp_hash']) && hash_equals((string)$row['fp_hash'], $fp_hash)) return true;
-	if ($cookie_id !== null && $cookie_id !== '' && !empty($row['cookie_id']) && hash_equals((string)$row['cookie_id'], $cookie_id)) return true;
-	return false;
+// The network a device fingerprint is confined to, or '' for addresses that must never
+// take part in device matching (private, shared by a mirror or carrier, or not an IP).
+function imgboard_net_key(string $ip): string {
+	$bin = @inet_pton($ip);
+	if ($bin === false) return '';
+	if (strlen($bin) === 16 && substr($bin, 0, 12) === str_repeat("\0", 10) . "\xff\xff") {
+		$bin = substr($bin, 12); // IPv4-mapped
+	}
+	if (!filter_var(inet_ntop($bin), FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) return '';
+	if (strlen($bin) === 4) {
+		if (ord($bin[0]) === 100 && (ord($bin[1]) & 0xC0) === 64) return ''; // carrier NAT 100.64/10
+		return inet_ntop(substr($bin, 0, 3) . "\0") . '/24';
+	}
+	if ((ord($bin[0]) & 0xE0) !== 0x20) return ''; // public IPv6 is 2000::/3
+	return inet_ntop(substr($bin, 0, 8) . str_repeat("\0", 8)) . '/64';
 }
 
-// Add a fingerprint ban. Skips rows with nothing matchable (no fp_hash and no
-// cookie_id), and de-dupes an identical unexpired entry.
-function imgboard_fp_ban_add(?string $fp_hash, ?string $cookie_id, ?string $hwid, ?string $reason, ?int $expires, ?string $by): void {
-	$fp_hash = $fp_hash ?: '';
-	$cookie_id = $cookie_id ?: '';
-	$hwid = $hwid ?: '';
-	if ($fp_hash === '' && $cookie_id === '') return;
-	imgboard_fp_ban_table();
-	$now = time();
-	$dup = prepare("SELECT `id` FROM ``imgboard_fp_bans`` WHERE `fp_hash` = :f AND `cookie_id` = :c AND (`expires` IS NULL OR `expires` >= :n) LIMIT 1");
-	$dup->bindValue(':f', $fp_hash);
-	$dup->bindValue(':c', $cookie_id);
-	$dup->bindValue(':n', $now, PDO::PARAM_INT);
-	$dup->execute() or error(db_error($dup));
-	if ($dup->fetch()) return;
-	$q = prepare("INSERT INTO ``imgboard_fp_bans`` (`fp_hash`,`cookie_id`,`hwid`,`reason`,`expires`,`time`,`by`) VALUES (:f,:c,:h,:r,:e,:t,:b)");
-	$q->bindValue(':f', $fp_hash);
+// [cookie id, device fingerprint] from a cookie array; '' for anything malformed.
+function imgboard_visitor_ids(array $cookies): array {
+	$get = fn(string $name, string $pattern) => (isset($cookies[$name]) && is_string($cookies[$name])
+		&& preg_match($pattern, $cookies[$name])) ? $cookies[$name] : '';
+	return [ $get('imgboard_uid', '/\A[a-f0-9]{32}\z/'), $get('imgboard_fp', '/\A[a-f0-9]{8,32}\z/') ];
+}
+
+// Give this browser its id cookie if it has none. Call before anything that may ban it.
+function imgboard_issue_visitor_id(): string {
+	list($cookie_id) = imgboard_visitor_ids($_COOKIE);
+	if ($cookie_id === '') {
+		$cookie_id = bin2hex(random_bytes(16));
+		setcookie('imgboard_uid', $cookie_id, [
+			'expires'  => time() + 60 * 60 * 24 * 730,
+			'path'     => '/',
+			'secure'   => \Vichan\Functions\Net\is_connection_secure(true),
+			'httponly' => true,
+			'samesite' => 'Lax',
+		]);
+		$_COOKIE['imgboard_uid'] = $cookie_id;
+	}
+	return $cookie_id;
+}
+
+function imgboard_fp_ban_add_link(int $ban_id, string $cookie_id, string $device, string $net): void {
+	imgboard_fp_ban_ids_table();
+	$q = prepare("INSERT IGNORE INTO ``imgboard_fp_ban_ids`` (`ban_id`,`cookie_id`,`device`,`net`,`time`) VALUES (:b,:c,:d,:n,:t)");
+	$q->bindValue(':b', $ban_id, PDO::PARAM_INT);
 	$q->bindValue(':c', $cookie_id);
-	$q->bindValue(':h', $hwid);
-	$q->bindValue(':r', $reason !== null && $reason !== '' ? $reason : null, $reason !== null && $reason !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL);
-	$q->bindValue(':e', $expires, $expires === null ? PDO::PARAM_NULL : PDO::PARAM_INT);
-	$q->bindValue(':t', $now, PDO::PARAM_INT);
-	$q->bindValue(':b', $by !== null && $by !== '' ? $by : null, $by !== null && $by !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL);
+	$q->bindValue(':d', $device);
+	$q->bindValue(':n', $net);
+	$q->bindValue(':t', time(), PDO::PARAM_INT);
 	$q->execute() or error(db_error($q));
 }
 
-// Is this visitor under an active fingerprint ban? Returns ['reason','expires'] or null.
-function imgboard_fp_ban_match(?string $fp_hash, ?string $cookie_id): ?array {
-	if (($fp_hash === null || $fp_hash === '') && ($cookie_id === null || $cookie_id === '')) return null;
-	imgboard_fp_ban_table();
-	$now = time();
-	$q = prepare("SELECT `fp_hash`,`cookie_id`,`reason`,`expires` FROM ``imgboard_fp_bans``
-		WHERE ((:f <> '' AND `fp_hash` = :f) OR (:c <> '' AND `cookie_id` = :c))
-		ORDER BY `time` DESC LIMIT 20");
-	$q->bindValue(':f', (string)$fp_hash);
-	$q->bindValue(':c', (string)$cookie_id);
+// Attach the offender's identifiers to a ban. $who has the shape of a post row:
+// cookie_id, fp_hash, ip.
+function imgboard_fp_ban_capture(int $ban_id, array $who): void {
+	list($cookie_id, $device) = imgboard_visitor_ids([
+		'imgboard_uid' => $who['cookie_id'] ?? null,
+		'imgboard_fp'  => $who['fp_hash'] ?? null,
+	]);
+	$net = imgboard_net_key((string)($who['ip'] ?? ''));
+	if ($cookie_id !== '') imgboard_fp_ban_add_link($ban_id, $cookie_id, '', '');
+	if ($device !== '' && $net !== '') imgboard_fp_ban_add_link($ban_id, '', $device, $net);
+}
+
+// The active ban these identifiers are linked to, or null. $board: false = any ban,
+// '' = site-wide bans only, a board = site-wide or that board's. A match by cookie also
+// remembers the current device and network; a device match never adds anything.
+function imgboard_fp_ban_match(string $cookie_id, string $device, string $ip, $board = false, ?int $ban_id = null): ?array {
+	global $config;
+	$net = ($config['imgboard_fp_ban_device'] ?? true) ? imgboard_net_key($ip) : '';
+	$by_device = $device !== '' && $net !== '';
+	if ($cookie_id === '' && !$by_device) return null;
+	imgboard_fp_ban_ids_table();
+	$q = prepare("SELECT b.`id`, b.`reason`, b.`board`, b.`created`, b.`expires`, (f.`cookie_id` <> '') AS `by_cookie`
+		FROM ``imgboard_fp_ban_ids`` f INNER JOIN ``bans`` b ON b.`id` = f.`ban_id`
+		WHERE ((:c1 <> '' AND f.`cookie_id` = :c2) OR (:d1 <> '' AND f.`device` = :d2 AND f.`net` = :n))
+			AND (b.`expires` IS NULL OR b.`expires` > :now)"
+		. ($board !== false ? " AND (b.`board` IS NULL OR b.`board` = :board)" : '')
+		. ($ban_id !== null ? " AND b.`id` = :id" : '')
+		. " ORDER BY `by_cookie` DESC, b.`expires` IS NULL DESC, b.`expires` DESC LIMIT 1");
+	$q->bindValue(':c1', $cookie_id);
+	$q->bindValue(':c2', $cookie_id);
+	$q->bindValue(':d1', $by_device ? $device : '');
+	$q->bindValue(':d2', $by_device ? $device : '');
+	$q->bindValue(':n', $net);
+	$q->bindValue(':now', time(), PDO::PARAM_INT);
+	if ($board !== false) $q->bindValue(':board', (string)$board);
+	if ($ban_id !== null) $q->bindValue(':id', $ban_id, PDO::PARAM_INT);
 	$q->execute() or error(db_error($q));
-	while ($row = $q->fetch(PDO::FETCH_ASSOC)) {
-		if (imgboard_fp_ban_row_matches($row, $fp_hash, $cookie_id, $now)) {
-			return ['reason' => $row['reason'], 'expires' => $row['expires']];
+	if (!$ban = $q->fetch(PDO::FETCH_ASSOC)) return null;
+	if ($ban['by_cookie'] && $by_device) {
+		$c = prepare("SELECT COUNT(*) FROM ``imgboard_fp_ban_ids`` WHERE `ban_id` = :b AND `device` <> ''");
+		$c->bindValue(':b', (int)$ban['id'], PDO::PARAM_INT);
+		$c->execute() or error(db_error($c));
+		if ((int)$c->fetchColumn() < IMGBOARD_FP_BAN_DEVICE_MAX) {
+			imgboard_fp_ban_add_link((int)$ban['id'], '', $device, $net);
 		}
 	}
-	return null;
+	return $ban;
 }
 
-// Capture a fingerprint ban from the post a mod just banned (fp_hash/cookie_id/hwid
-// ride along on the post row). Called from Bans::new_ban.
-function imgboard_fp_ban_capture_from_post(array $post, ?string $reason, ?int $expires, ?string $by): void {
-	imgboard_fp_ban_add(
-		isset($post['fp_hash']) ? (string)$post['fp_hash'] : null,
-		isset($post['cookie_id']) ? (string)$post['cookie_id'] : null,
-		isset($post['hwid']) ? (string)$post['hwid'] : null,
-		$reason, $expires, $by
-	);
-	if (function_exists('modLog')) { modLog('Fingerprint-banned a poster (follows IP changes)', false); }
+// The current visitor's fingerprint ban, ready for displayBan(). It carries nothing
+// about the original address or post, in case the person seeing it is not the offender.
+function imgboard_visitor_ban($board = false, ?int $ban_id = null): ?array {
+	list($cookie_id, $device) = imgboard_visitor_ids($_COOKIE);
+	$ip = (string)($_SERVER['REMOTE_ADDR'] ?? '');
+	$ban = imgboard_fp_ban_match($cookie_id, $device, $ip, $board, $ban_id);
+	if ($ban === null) return null;
+	return [
+		'id'      => (int)$ban['id'],
+		'reason'  => $ban['reason'],
+		'board'   => $ban['board'],
+		'created' => (int)$ban['created'],
+		'expires' => $ban['expires'] !== null ? (int)$ban['expires'] : null,
+		'seen'    => 1,
+		'post'    => false,
+		'message' => false,
+		'mask'    => $ip,
+	];
 }
 
-// Capture fingerprint bans from every fingerprint seen at a single IP (imgboard_fp),
-// so a ban typed as a bare IP - with no post attached - still becomes a fingerprint
-// ban. Returns how many were added. Degrades to 0 if the fp table isn't there yet.
-// Single IPs only: a CIDR/wildcard range can't be enumerated against stored IPs.
-function imgboard_fp_ban_capture_from_ip(string $ip, ?string $reason, ?int $expires, ?string $by, int $limit = 25): int {
-	if ($ip === '' || filter_var($ip, FILTER_VALIDATE_IP) === false) return 0;
-	imgboard_fp_ban_table();
-	$n = 0;
-	$q = prepare("SELECT `fp_hash`,`cookie_id`,`hwid` FROM ``imgboard_fp`` WHERE `ip` = :ip ORDER BY `last_seen` DESC LIMIT :lim");
-	$q->bindValue(':ip', $ip);
-	$q->bindValue(':lim', $limit, PDO::PARAM_INT);
-	if (!$q->execute()) return 0; // table may not exist yet - don't halt the ban
-	while ($r = $q->fetch(PDO::FETCH_ASSOC)) {
-		imgboard_fp_ban_add($r['fp_hash'] ?? null, $r['cookie_id'] ?? null, $r['hwid'] ?? null, $reason, $expires, $by);
-		$n++;
-	}
-	return $n;
-}
-
-function imgboard_fp_ban_list(): array {
-	imgboard_fp_ban_table();
-	$rows = [];
-	$q = query("SELECT * FROM ``imgboard_fp_bans`` ORDER BY `time` DESC LIMIT 500") or error(db_error());
-	while ($r = $q->fetch(PDO::FETCH_ASSOC)) { $rows[] = $r; }
-	return $rows;
-}
-
-function imgboard_fp_ban_delete(int $id): void {
-	imgboard_fp_ban_table();
-	$q = prepare("DELETE FROM ``imgboard_fp_bans`` WHERE `id` = :id");
-	$q->bindValue(':id', $id, PDO::PARAM_INT);
+function imgboard_fp_ban_delete(int $ban_id): void {
+	imgboard_fp_ban_ids_table();
+	$q = prepare("DELETE FROM ``imgboard_fp_ban_ids`` WHERE `ban_id` = :b");
+	$q->bindValue(':b', $ban_id, PDO::PARAM_INT);
 	$q->execute() or error(db_error($q));
 }
 
-// Staff screen: list fingerprint bans with a delete (undo) link.
+// Editing a ban replaces its row: carry the links to the new one.
+function imgboard_fp_ban_move(int $from, int $to): void {
+	imgboard_fp_ban_ids_table();
+	$q = prepare("UPDATE IGNORE ``imgboard_fp_ban_ids`` SET `ban_id` = :to WHERE `ban_id` = :from");
+	$q->bindValue(':to', $to, PDO::PARAM_INT);
+	$q->bindValue(':from', $from, PDO::PARAM_INT);
+	$q->execute() or error(db_error($q));
+}
+
+// Bans that have identifiers linked, newest first.
+function imgboard_fp_ban_list(): array {
+	imgboard_fp_ban_ids_table();
+	// links left behind by bans that were purged
+	query("DELETE f FROM ``imgboard_fp_ban_ids`` f LEFT JOIN ``bans`` b ON b.`id` = f.`ban_id` WHERE b.`id` IS NULL") or error(db_error());
+	$q = query("SELECT f.`ban_id`, f.`cookie_id`, f.`device`, f.`net`, b.`reason`, b.`board`, b.`expires`
+		FROM ``imgboard_fp_ban_ids`` f INNER JOIN ``bans`` b ON b.`id` = f.`ban_id`
+		ORDER BY f.`ban_id` DESC LIMIT 2000") or error(db_error());
+	$bans = [];
+	while ($r = $q->fetch(PDO::FETCH_ASSOC)) {
+		$id = (int)$r['ban_id'];
+		if (!isset($bans[$id])) {
+			$bans[$id] = [ 'id' => $id, 'reason' => $r['reason'], 'board' => $r['board'], 'expires' => $r['expires'], 'links' => [] ];
+		}
+		$bans[$id]['links'][] = [ 'cookie_id' => $r['cookie_id'], 'device' => $r['device'], 'net' => $r['net'] ];
+	}
+	return array_values($bans);
+}
+
+// Staff screen. It shows cookie ids and networks, so it needs the same rank as IPs.
 function mod_fp_bans(Context $ctx) {
 	global $config, $mod;
-	if (!hasPermission($config['mod']['ban'])) error($config['error']['noaccess']);
+	if (!hasPermission($config['mod']['ban']) || !hasPermission($config['mod']['show_ip'])) error($config['error']['noaccess']);
 	$bans = imgboard_fp_ban_list();
 	foreach ($bans as &$b) {
 		$b['del_token'] = make_secure_link_token('fp-bans/delete/' . $b['id']);
@@ -2901,29 +3007,29 @@ function mod_fp_bans(Context $ctx) {
 	mod_page(_('Fingerprint bans'), 'mod/fp_bans.html', [ 'bans' => $bans ], $mod);
 }
 
-// Fingerprint bans are site-wide, so lifting one needs an all-boards account.
+// Lifting reaches across boards, so it needs an all-boards account.
 function mod_fp_ban_delete(Context $ctx, $id) {
 	global $config;
-	if (!hasPermission($config['mod']['ban'], '*')) error($config['error']['noaccess']);
+	if (!hasPermission($config['mod']['ban'], '*') || !hasPermission($config['mod']['show_ip'], '*')) error($config['error']['noaccess']);
 	imgboard_fp_ban_delete((int)$id);
-	modLog('Deleted fingerprint ban #' . (int)$id);
+	modLog('Removed the fingerprint links of ban #' . (int)$id);
 	header('Location: ?/fp-bans', true, $config['redirect_http']);
 }
 
 /* ----------------------------------------------------------------------- *
  *  Staff account hardening
  *
- *  1. Login brute-force throttle: after a handful of failed logins from one IP
- *     within a window, that IP is locked out for a cooldown. Keyed on
- *     REMOTE_ADDR, the same real client IP the ban/post system already uses.
+ *  1. Login brute-force throttle: every attempt is counted BEFORE the password is
+ *     checked, in one database statement, so simultaneous guesses cannot slip past.
+ *     Counted per address and per username; a successful login clears the counts.
  *  2. Minimum password strength: enforced wherever a mod sets or changes a
  *     password, but NOT on the login auto-rehash path, so an existing short
  *     password keeps working until its owner changes it.
  * ----------------------------------------------------------------------- */
 
-const IMGBOARD_LOGIN_MAX_FAILS = 5;    // failed logins allowed within the window
-const IMGBOARD_LOGIN_WINDOW    = 900;  // 15 min: span over which fails accumulate
-const IMGBOARD_LOGIN_LOCKOUT   = 900;  // 15 min: lockout once the threshold trips
+const IMGBOARD_LOGIN_MAX_FAILS = 5;    // attempts per address within the window
+const IMGBOARD_LOGIN_WINDOW    = 900;  // 15 min: span over which attempts accumulate
+const IMGBOARD_LOGIN_LOCKOUT   = 900;  // 15 min: lockout once the limit is passed
 const IMGBOARD_MIN_PASSWORD_LEN = 10;  // minimum staff password length
 
 function imgboard_login_attempts_table(): string {
@@ -2937,54 +3043,53 @@ function imgboard_login_attempts_table(): string {
 	return 'imgboard_login_attempts';
 }
 
-const IMGBOARD_LOGIN_USER_MAX_FAILS = 15; // fails per username (any address) before that username is locked for a while
+const IMGBOARD_LOGIN_USER_MAX_FAILS = 15; // attempts per username (any address) before that username is locked for a while
 
 // Throttle key for a client: IPv6 clients share one key per /64 so rotating addresses in a
-// range (or the Tor/I2P mirrors' client-chosen pseudo-IPs, via the username key below) does
-// not reset the count.
+// range does not reset the count.
 function imgboard_login_ip_key(string $ip): string {
 	return function_exists('imgboard_ip_lock_key') ? imgboard_ip_lock_key($ip) : $ip;
 }
 
 // Throttle key for a username. Hashed so it fits the ip column and never stores the name.
-function imgboard_login_user_key(string $username): string {
-	return 'u:' . substr(sha1(strtolower($username)), 0, 16);
+function imgboard_login_user_key(string $username, string $prefix = 'u:'): string {
+	return $prefix . substr(sha1(strtolower($username)), 0, 16);
 }
 
-// Seconds left on an active lockout for this IP, or 0 if it may try now.
-function imgboard_login_locked_for(string $ip): int {
-	if ($ip === '') return 0;
-	imgboard_login_attempts_table();
-	$q = prepare("SELECT `locked_until` FROM ``imgboard_login_attempts`` WHERE `ip` = :ip");
-	$q->bindValue(':ip', $ip);
-	$q->execute() or error(db_error($q));
-	$r = $q->fetch(PDO::FETCH_ASSOC);
-	if (!$r) return 0;
-	$rem = (int)$r['locked_until'] - time();
-	return $rem > 0 ? $rem : 0;
+// The counters one attempt must pass, as [key => limit]. A known browser (one that has
+// logged in as this user before) skips the shared per-username lock. Tor/I2P addresses
+// are chosen by the visitor and share one network, so they are limited by username only:
+// otherwise one mirror visitor could lock every other one out.
+function imgboard_login_keys(string $ip, string $username, bool $known_device): array {
+	if (imgboard_hs_label($ip) !== '') {
+		return [ imgboard_login_user_key($username, $known_device ? 'k:' : 'u:') => IMGBOARD_LOGIN_USER_MAX_FAILS ];
+	}
+	$keys = [ imgboard_login_ip_key($ip) => IMGBOARD_LOGIN_MAX_FAILS ];
+	if (!$known_device) $keys[imgboard_login_user_key($username)] = IMGBOARD_LOGIN_USER_MAX_FAILS;
+	return $keys;
 }
 
-// Record a failed login; trip a lockout once too many fails land in the window.
-function imgboard_login_record_fail(string $ip, int $max = IMGBOARD_LOGIN_MAX_FAILS): void {
-	if ($ip === '') return;
+// Count one attempt against $key and say whether it may go ahead.
+function imgboard_login_attempt(string $key, int $max): bool {
 	imgboard_login_attempts_table();
 	$now = time();
-	$q = prepare("SELECT `fails`, `first_fail` FROM ``imgboard_login_attempts`` WHERE `ip` = :ip");
-	$q->bindValue(':ip', $ip);
+	// assignments run left to right: `fails` is already the new value in the lines below it
+	$q = prepare("INSERT INTO ``imgboard_login_attempts`` (`ip`, `fails`, `first_fail`, `locked_until`) VALUES (:ip, 1, :t1, 0)
+		ON DUPLICATE KEY UPDATE
+			`fails` = IF(`first_fail` <= :cut AND `locked_until` <= :t2, 1, `fails` + 1),
+			`first_fail` = IF(`fails` = 1, :t3, `first_fail`),
+			`locked_until` = IF(`locked_until` > :t4, `locked_until`, IF(`fails` > :max, :until, 0))");
+	$q->bindValue(':ip', $key);
+	foreach ([':t1', ':t2', ':t3', ':t4'] as $name) $q->bindValue($name, $now, PDO::PARAM_INT);
+	$q->bindValue(':cut', $now - IMGBOARD_LOGIN_WINDOW, PDO::PARAM_INT);
+	$q->bindValue(':max', $max, PDO::PARAM_INT);
+	$q->bindValue(':until', $now + IMGBOARD_LOGIN_LOCKOUT, PDO::PARAM_INT);
+	$q->execute() or error(db_error($q));
+	$q = prepare("SELECT `fails`, `locked_until` FROM ``imgboard_login_attempts`` WHERE `ip` = :ip");
+	$q->bindValue(':ip', $key);
 	$q->execute() or error(db_error($q));
 	$r = $q->fetch(PDO::FETCH_ASSOC);
-	if (!$r || ($now - (int)$r['first_fail']) > IMGBOARD_LOGIN_WINDOW) {
-		$fails = 1; $first = $now;           // start a fresh window
-	} else {
-		$fails = (int)$r['fails'] + 1; $first = (int)$r['first_fail'];
-	}
-	$locked_until = ($fails >= $max) ? ($now + IMGBOARD_LOGIN_LOCKOUT) : 0;
-	$ins = prepare("REPLACE INTO ``imgboard_login_attempts`` (`ip`, `fails`, `first_fail`, `locked_until`) VALUES (:ip, :f, :ff, :lu)");
-	$ins->bindValue(':ip', $ip);
-	$ins->bindValue(':f', $fails, PDO::PARAM_INT);
-	$ins->bindValue(':ff', $first, PDO::PARAM_INT);
-	$ins->bindValue(':lu', $locked_until, PDO::PARAM_INT);
-	$ins->execute() or error(db_error($ins));
+	return $r && (int)$r['locked_until'] <= $now && (int)$r['fails'] <= $max;
 }
 
 // Clear the counter after a successful login.
@@ -3054,7 +3159,7 @@ function mod_imgboard_viewas(Context $ctx, $to) {
 	global $mod, $config;
 	if (!$mod) error($config['error']['noaccess']);
 	$real = isset($mod['real_type']) ? $mod['real_type'] : $mod['type'];
-	$secure = (isset($config['cookies']['secure_login_only']) && $config['cookies']['secure_login_only'] === 1);
+	$secure = imgboard_https();
 	if ($to === 'off') {
 		setcookie('imgboard_viewas', '', time() - 3600, '/', '', $secure, false);
 	} elseif ($to === 'user') {
@@ -3635,6 +3740,8 @@ function imgboard_fp_zip_emit(bool $staff_only): void {
  *  the posts table, so it can never leak to the public board.
  * ----------------------------------------------------------------------- */
 
+const IMGBOARD_HS_QUEUE_MAX = 100; // held Tor/I2P posts allowed to wait at once
+
 function imgboard_ppa_table(): string {
 	imgboard_ddl_once("CREATE TABLE IF NOT EXISTS ``imgboard_pending_posts`` (
 		`id` int(10) unsigned NOT NULL AUTO_INCREMENT,
@@ -3685,6 +3792,15 @@ function imgboard_ppa_count(): int {
 function imgboard_ppa_hold(string $board_uri, array $post): void {
 	global $config;
 	imgboard_ppa_table();
+	// Tor/I2P visitors cannot be banned or flood-limited for long (they pick their own
+	// pseudo-address), so the number of their posts waiting for staff is capped.
+	if (imgboard_hs_label($post['ip'] ?? ($_SERVER['REMOTE_ADDR'] ?? '')) !== '') {
+		$q = query("SELECT COUNT(*) FROM ``imgboard_pending_posts`` WHERE `ip` LIKE 'fdd0:%' OR `ip` LIKE 'fdd1:%'") or error(db_error());
+		if ((int)$q->fetchColumn() >= IMGBOARD_HS_QUEUE_MAX) {
+			undoImage($post);
+			error('Too many posts from the hidden-service mirrors are waiting for approval. Try again later.');
+		}
+	}
 	$preview = mb_substr(trim((string)($post['body_nomarkup'] ?? '')), 0, 255);
 	$is_op = !empty($post['op']);
 	$q = prepare("INSERT INTO ``imgboard_pending_posts``

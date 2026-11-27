@@ -1,49 +1,28 @@
 <?php
 /*
- *  One-off: make every EXISTING site-wide ban a fingerprint ban too, wherever a fingerprint
- *  is knowable - from the banned post stored on the ban, and from fingerprints seen
- *  at a single-IP ban's address (imgboard_fp). Range bans with no post are skipped
- *  (no single fingerprint to capture). Idempotent: re-running just de-dupes.
+ *  One-off: attach fingerprint links to EXISTING bans, using the post saved on each
+ *  ban (only bans that stored their post have one: $config['ban_show_post']). Bans
+ *  typed as a bare address or range are skipped, on purpose: guessing from "who else
+ *  used this address" would ban strangers. Safe to run again.
  *
  *  Run: docker compose exec -T -u www-data -w /var/www php php tools/fpban-backfill.php
  */
 
 require 'inc/bootstrap.php';
 
-if (!function_exists('imgboard_fp_ban_add')) {
+if (!function_exists('imgboard_fp_ban_capture')) {
 	fwrite(STDERR, "fp-ban functions not loaded (inc/mod/pending.php)\n");
 	exit(1);
 }
 
-$q = query("SELECT `ipstart`, `ipend`, `expires`, `reason`, `post` FROM ``bans`` WHERE `board` IS NULL") or error(db_error());
-$bans = $q->fetchAll(PDO::FETCH_ASSOC);
+$q = query("SELECT `id`, `post` FROM ``bans`` WHERE `post` IS NOT NULL AND (`expires` IS NULL OR `expires` > " . time() . ")") or error(db_error());
 
-$now = time();
 $seen = 0;
-$added = 0;
-
-foreach ($bans as $b) {
-	$expires = $b['expires'] !== null ? (int)$b['expires'] : null;
-	if ($expires !== null && $expires < $now) continue; // skip already-expired bans
-	$reason = ($b['reason'] !== null && $b['reason'] !== '') ? $b['reason'] : null;
+while ($b = $q->fetch(PDO::FETCH_ASSOC)) {
+	$post = json_decode($b['post'], true);
+	if (!is_array($post) || (empty($post['cookie_id']) && empty($post['fp_hash']))) continue;
+	imgboard_fp_ban_capture((int)$b['id'], $post);
 	$seen++;
-
-	// From the fingerprint stored on the banned post.
-	if (!empty($b['post'])) {
-		$p = json_decode($b['post'], true);
-		if (is_array($p) && (!empty($p['fp_hash']) || !empty($p['cookie_id']))) {
-			imgboard_fp_ban_add($p['fp_hash'] ?? null, $p['cookie_id'] ?? null, $p['hwid'] ?? null, $reason, $expires, 'backfill');
-			$added++;
-		}
-	}
-
-	// From fingerprints seen at a single-IP ban's address.
-	if ($b['ipend'] === null || $b['ipstart'] === $b['ipend']) {
-		$ip = @inet_ntop($b['ipstart']);
-		if ($ip !== false) {
-			$added += imgboard_fp_ban_capture_from_ip($ip, $reason, $expires, 'backfill');
-		}
-	}
 }
 
-echo "fp-ban backfill: scanned " . count($bans) . " bans, " . $seen . " active, added up to $added fingerprint bans\n";
+echo "fp-ban backfill: linked identifiers from $seen active ban(s) with a saved post\n";

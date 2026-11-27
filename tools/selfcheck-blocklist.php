@@ -113,5 +113,21 @@ foreach ($link_hit as $b) {
 }
 chk(imgboard_blocklist_match_core('clean.example-not-listed', [], $links) === null, 'unlisted link should pass match');
 
+// --- strict mode: what is clear enough to auto-ban for (everything above is still rejected) ---
+$strict = fn(string $b, array $w, array $l) => imgboard_blocklist_match_core($b, $w, $l, true);
+foreach (['bad', 'you are bad.', 'XbadX', 'b a d', 'b.a.d', 'so b - a - d ok', "b\xE2\x80\x8Ba\xE2\x80\x8Bd"] as $b) {
+	chk($strict($b, ['bad'], []) !== null, "strict word should hit [$b]");
+}
+foreach (['i will grab a drink', 'that cab added more', 'web admin'] as $b) {
+	chk(imgboard_blocklist_match_core($b, ['bad'], []) !== null, "still rejected [$b]");
+	chk($strict($b, ['bad'], []) === null, "joined words must not ban [$b]");
+}
+foreach (['https://t.co/abc', 'go to t.co', 't(dot)co', 'http://www.t.co', 'sub.t.co/x', 't.co:443/a', 'hxxp://t.co'] as $b) {
+	chk($strict($b, [], ['t.co']) !== null, "strict link should hit [$b]");
+}
+foreach (['see https://reddit.com/r/x', 'paint.com is fine', 'http://at.co', 't.community'] as $b) {
+	chk($strict($b, [], ['t.co']) === null, "a longer name must not ban [$b]");
+}
+
 echo $fail ? "FAILED $fail\n" : "all blocklist checks passed\n";
 exit($fail ? 1 : 0);

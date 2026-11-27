@@ -1373,12 +1373,19 @@ if (isset($_POST['delete'])) {
 
 	// Imgboard: reject posts containing an active blocked word or link
 	// (moderators are exempt). Clean up any uploaded file first.
+	// Every poster gets the id cookie before anything below can ban them.
+	if (function_exists('imgboard_issue_visitor_id')) {
+		imgboard_issue_visitor_id();
+	}
+
 	if (empty($post['mod']) && function_exists('imgboard_blocklist_match_post')
 			&& ($block_msg = imgboard_blocklist_match_post($post)) !== null) {
 		undoImage($post);
-		// Auto-ban (24h, site-wide) the poster, then show them the ban/appeal screen.
-		if (function_exists('imgboard_blocklist_autoban')) {
-			imgboard_blocklist_autoban($_SERVER['REMOTE_ADDR'] ?? '', $block_msg);
+		// Auto-ban (24h, site-wide) only for a plain match; a match that needed words glued
+		// together, or a blocked name inside a longer one, is just refused.
+		$ban_msg = imgboard_blocklist_match_post($post, true);
+		if ($ban_msg !== null && function_exists('imgboard_blocklist_autoban')) {
+			imgboard_blocklist_autoban($_SERVER['REMOTE_ADDR'] ?? '', $ban_msg);
 		}
 		error($block_msg);
 	}
@@ -1407,12 +1414,7 @@ if (isset($_POST['delete'])) {
 	// example.com poster identification (shown next to the IP for mods):
 	//   cookie_id - a persistent random per-visitor cookie
 	//   hwid      - a device fingerprint derived from request headers
-	if (isset($_COOKIE['imgboard_uid']) && preg_match('/^[a-f0-9]{32}$/', $_COOKIE['imgboard_uid'])) {
-		$post['cookie_id'] = $_COOKIE['imgboard_uid'];
-	} else {
-		$post['cookie_id'] = bin2hex(random_bytes(16));
-		setcookie('imgboard_uid', $post['cookie_id'], time() + 60 * 60 * 24 * 730, '/', '', false, true);
-	}
+	$post['cookie_id'] = imgboard_issue_visitor_id();
 	$post['hwid'] = substr(sha1('imgboard-hwid' . $config['cookies']['salt']
 		. ($_SERVER['HTTP_USER_AGENT'] ?? '') . '|'
 		. ($_SERVER['HTTP_ACCEPT_LANGUAGE'] ?? '') . '|'
@@ -1633,6 +1635,11 @@ if (isset($_POST['delete'])) {
 	$ban_id = (int)$_POST['ban_id'];
 
 	$ban = Bans::findSingle($_SERVER['REMOTE_ADDR'], $ban_id, $config['require_ban_view'], $config['auto_maintenance']);
+
+	// Someone held by that ban's fingerprint links may appeal it from another address.
+	if (empty($ban) && function_exists('imgboard_visitor_ban')) {
+		$ban = imgboard_visitor_ban(false, $ban_id);
+	}
 
 	if (empty($ban)) {
 		error($config['error']['noban']);
