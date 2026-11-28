@@ -235,7 +235,7 @@ Built on the work of:
 - **Tinyboard** 0.9.6 — Copyright © 2010-2014 Tinyboard Development Group.
   <https://github.com/savetheinternet/Tinyboard>
 - **vichan** — Copyright © 2012-2025 vichan-devel. <https://github.com/vichan-devel/vichan>
-- **dchan** 1.2.3 — this fork. <https://github.com/mortally4634/dchan>
+- **dchan** 1.2.4 — this fork. <https://github.com/mortally4634/dchan>
 
 Licenses: [LICENSE.md](LICENSE.md) covers dchan; [LICENSE.Tinyboard.md](LICENSE.Tinyboard.md) covers the
 Tinyboard and vichan code this fork is built on.

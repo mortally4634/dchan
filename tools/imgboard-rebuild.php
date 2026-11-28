@@ -14,6 +14,17 @@
 
 require 'inc/bootstrap.php';
 
+/* Clear Twig's compiled-template cache so template changes (e.g. header.html) always take
+ * effect on a rebuild, even if the deploy left the old compiled copies in place. */
+foreach ([ 'templates/cache', ($config['dir']['template_cache'] ?? '') ] as $dir) {
+	if ($dir && is_dir($dir)) {
+		foreach (glob(rtrim($dir, '/') . '/*') as $entry) {
+			if (is_file($entry)) { @unlink($entry); }
+			elseif (is_dir($entry)) { foreach (glob($entry . '/*') as $f) { @unlink($f); } @rmdir($entry); }
+		}
+	}
+}
+
 /* --- Setup (same as the ?/upgrade-db mod page, but credential-free): ensure
  *     every board's posts table has the columns this build expects, activate
  *     the public ban list theme, and seed the rules/news page content. --- */

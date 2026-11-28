@@ -1,11 +1,15 @@
 {#
 	Apply the viewer's saved board theme BEFORE the first paint, so a page never flashes
-	the default (Yotsuba B) theme for a moment on load or refresh. The theme is applied by
-	main.js too, but only after the scripts run - too late, hence the flash. This runs in
-	<head>: it finds (or creates) the #stylesheet <link> and points it at the saved theme,
-	which makes the browser wait for that stylesheet before painting, like any other.
-	Included from header.html (every normal page) and the static theme templates.
+	the default (Yotsuba B) theme for a moment on load or refresh. main.js applies the theme
+	too, but only after the scripts run - too late, hence the flash.
+
+	This is the ONLY #stylesheet link; it is static (not created by script) so the browser
+	treats it as render-blocking. When the saved theme differs from what is already showing,
+	the page is hidden until that theme's stylesheet has loaded, which removes the flash even
+	if the browser would otherwise paint the base stylesheet first. A timeout un-hides no
+	matter what, so a missing/slow theme file can never leave the page blank.
 #}
+<link rel="stylesheet" media="screen" type="text/css" id="stylesheet"{% if config.default_stylesheet.1 != '' %} href="{{ config.uri_stylesheets }}{{ config.default_stylesheet.1 }}?v={{ config.resource_version }}"{% endif %}>
 <script>
 (function () {
 	var choices = { {% for name, uri in config.stylesheets %}'{{ name|e('js') }}': '{{ uri ? (config.uri_stylesheets ~ uri) : '' }}'{% if not loop.last %}, {% endif %}{% endfor %} };
@@ -18,14 +22,24 @@
 		{% endif %}
 		if (!sel) { sel = localStorage.getItem('stylesheet'); }
 		if (sel && choices.hasOwnProperty(sel)) {
-			var link = document.getElementById('stylesheet');
-			if (!link) {
-				link = document.createElement('link');
-				link.rel = 'stylesheet'; link.media = 'screen'; link.id = 'stylesheet';
-				document.head.appendChild(link);
-			}
-			link.href = choices[sel] ? choices[sel] + '?v={{ config.resource_version }}' : '';
 			document.documentElement.className += ' theme-' + sel.toLowerCase().replace(/[^a-z0-9]/g, '');
+			var link = document.getElementById('stylesheet');
+			var href = choices[sel] ? choices[sel] + '?v={{ config.resource_version }}' : '';
+			var current = link.getAttribute('href') || '';
+			if (href !== current) {
+				if (href) {
+					// Hide until the chosen theme is on, so the base theme is never shown first.
+					var html = document.documentElement;
+					html.style.visibility = 'hidden';
+					var show = function () { html.style.visibility = ''; };
+					link.addEventListener('load', show);
+					link.addEventListener('error', show);
+					setTimeout(show, 3000);
+					link.href = href;
+				} else {
+					link.removeAttribute('href'); // embedded (Yotsuba B): the base stylesheet already is it
+				}
+			}
 		}
 	} catch (e) {}
 })();
