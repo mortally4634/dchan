@@ -205,6 +205,14 @@
 	$config['cookies']['expire'] = 60 * 60 * 24 * 30; // 30 days, enforced server-side too
 	$config['mod']['lock_ip']    = getenv('VICHAN_LOCK_IP') === '1';
 
+	// Recompile a Twig template whenever its source changes. config.php sets this false and
+	// re-runs on every openBoard(), while pending.php (require_once) sets it true only once -
+	// so after any openBoard() it was reverting to false, and edited templates (header.html,
+	// imgboard_home.html, ...) kept serving the STALE compiled copy. Rendering the homepage
+	// opens every board for stats, so the home template in particular was always stale. Set
+	// here so it survives the openBoard reload. The per-render mtime check is cheap.
+	$config['twig_auto_reload'] = true;
+
 	// Let banned users appeal (the appeal form shows on the ban screen; pending appeals
 	// surface under the Report queue and at ?/ban-appeals). Drives the auto-ban safety net.
 	$config['ban_appeals'] = true;
@@ -223,7 +231,7 @@
 	// a blank vichan version before/without install. Pin the upstream vichan
 	// version here as a fallback; the footer prefers config.version when present.
 	$config['imgboard_vichan_version']    = '5.2.2';
-	$config['imgboard_dchan_version']     = '1.2.4';
+	$config['imgboard_dchan_version']     = '1.2.5';
 
 	// Country flags: use the individual PNG files in static/flags/ (all present)
 	// rather than the condensed CSS sprite, so flags render without extra setup.
