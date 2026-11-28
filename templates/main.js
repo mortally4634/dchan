@@ -162,6 +162,9 @@ function changeStyle(styleName, link) {
 	}
 
 	let style = styles[styleName];
+	// Remember the resolved file so standalone static pages (e.g. 404.html) can match the
+	// theme without the stylesheet name->file map.
+	try { localStorage.stylesheet_uri = style || ''; } catch (e) {}
 	if (style !== '') {
 		// Add the version of the resource if the style is not the embedded one.
 		style += `?v=${resourceVersion}`;

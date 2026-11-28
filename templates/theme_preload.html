@@ -1,0 +1,32 @@
+{#
+	Apply the viewer's saved board theme BEFORE the first paint, so a page never flashes
+	the default (Yotsuba B) theme for a moment on load or refresh. The theme is applied by
+	main.js too, but only after the scripts run - too late, hence the flash. This runs in
+	<head>: it finds (or creates) the #stylesheet <link> and points it at the saved theme,
+	which makes the browser wait for that stylesheet before painting, like any other.
+	Included from header.html (every normal page) and the static theme templates.
+#}
+<script>
+(function () {
+	var choices = { {% for name, uri in config.stylesheets %}'{{ name|e('js') }}': '{{ uri ? (config.uri_stylesheets ~ uri) : '' }}'{% if not loop.last %}, {% endif %}{% endfor %} };
+	try {
+		var sel = null;
+		{% if config.stylesheets_board %}
+		if (typeof board_name !== 'undefined' && board_name) {
+			sel = (JSON.parse(localStorage.getItem('board_stylesheets') || '{}'))[board_name];
+		}
+		{% endif %}
+		if (!sel) { sel = localStorage.getItem('stylesheet'); }
+		if (sel && choices.hasOwnProperty(sel)) {
+			var link = document.getElementById('stylesheet');
+			if (!link) {
+				link = document.createElement('link');
+				link.rel = 'stylesheet'; link.media = 'screen'; link.id = 'stylesheet';
+				document.head.appendChild(link);
+			}
+			link.href = choices[sel] ? choices[sel] + '?v={{ config.resource_version }}' : '';
+			document.documentElement.className += ' theme-' + sel.toLowerCase().replace(/[^a-z0-9]/g, '');
+		}
+	} catch (e) {}
+})();
+</script>

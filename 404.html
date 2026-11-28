@@ -4,22 +4,28 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>404 Not Found - example.com</title>
+<!-- Base board stylesheet, plus the viewer's saved theme applied before paint so this
+     static error page matches the rest of the site (and never flashes). main.js stores
+     the resolved theme file in localStorage.stylesheet_uri when a theme is chosen. -->
+<link rel="stylesheet" href="/stylesheets/style.css">
+<link rel="stylesheet" id="stylesheet" href="">
+<script>
+	try {
+		var uri = localStorage.getItem('stylesheet_uri');
+		if (uri) { document.getElementById('stylesheet').href = uri; }
+	} catch (e) {}
+</script>
 <style>
 	html, body { height: 100%; margin: 0; }
-	body {
-		display: flex; align-items: center; justify-content: center;
-		background: #eef2ff; color: #333;
-		font-family: Arial, Helvetica, sans-serif; text-align: center;
-	}
-	.box { padding: 24px; }
-	h1 { font-size: 72px; margin: 0; color: #a00; }
-	h2 { font-size: 20px; margin: 8px 0 16px; color: #800000; }
-	p  { margin: 0 0 16px; }
-	a  { color: #34345c; }
+	body { display: flex; align-items: center; justify-content: center; text-align: center; }
+	.box404 { padding: 24px; }
+	.box404 h1 { font-size: 72px; margin: 0; color: #a00; }
+	.box404 h2 { font-size: 20px; margin: 8px 0 16px; }
+	.box404 p  { margin: 0 0 16px; }
 </style>
 </head>
 <body>
-	<div class="box">
+	<div class="box404">
 		<h1>404</h1>
 		<h2>Page not found</h2>
 		<p>The page you were looking for doesn&rsquo;t exist.</p>

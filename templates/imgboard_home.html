@@ -65,6 +65,10 @@
 		.theme-yotsuba, .theme-futaba { --bar: #EEAA88; }
 		[class*='theme-'] .box-wrap tr:has(th), [class*='theme-'] .box.middle > h2 { background: var(--bar, #9988ee); color: #000; }
 		[class*='theme-'] .box-wrap tr:has(th) th, [class*='theme-'] .box.middle > h2 { color: #000; }
+		/* Dark theme: the board-table header should read like dark.css's own table headers
+		   (grey bar, green text), not a neon-green bar. */
+		.theme-dark .box-wrap tr:has(th), .theme-dark .box.middle > h2 { background: #333; color: #32DD72; }
+		.theme-dark .box-wrap tr:has(th) th { color: #32DD72; }
 		.box.right + .box.right { margin-top: 8px; }
 		.mirror-list li { padding: 3px 0; font-size: 11pt; }
 		.mirror-list a { font-family: monospace; font-size: 9pt; }
